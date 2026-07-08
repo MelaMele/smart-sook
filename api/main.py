@@ -1,3 +1,14 @@
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+
+# የዕቃ መመዝገቢያ ፎርማት መቆጣጠሪያ
+class ProductCreate(BaseModel):
+    name: str
+    quantity: int
+    barcode: str | None = None
+    buying_price: float
+    selling_price: float
+    expiry_date: str
 import os
 from fastapi import FastAPI, Request
 from datetime import date, timedelta
