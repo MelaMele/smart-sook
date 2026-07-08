@@ -1,5 +1,7 @@
 fastapi
-supabase
 pydantic
 python-dotenv
-aiogram==3.10.0
+supabase
+aiogram==3.15.0
+pydantic-core
+uvicorn
