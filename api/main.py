@@ -1,10 +1,12 @@
 import os
 import json
+import asyncio
 from fastapi import FastAPI, Request, HTTPException
 from datetime import date, timedelta
 from supabase import create_client, Client
 from aiogram import Bot, Dispatcher, Types, F
 from aiogram.types import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
 
 app = FastAPI(title="Smart Sook Cloud API")
 
@@ -18,9 +20,7 @@ bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
 # --- ኪቦርዶች (KEYBOARDS) ---
-
 def get_main_menu():
-    """ ለባለሱቁ ዋና ማውጫ ባተኖችን መፍጠሪያ """
     buttons = [
         [InlineKeyboardButton(text="📦 የዕቃዎች ክምችት (Stock)", callback_data="check_stock")],
         [InlineKeyboardButton(text="⚠️ ኤክስፓየር ዴት (Expiry)", callback_data="check_expiry")],
@@ -29,17 +29,14 @@ def get_main_menu():
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# --- 1. የቴሌግራም ቦት ሎጂክ ---
-
-@dp.message(F.text == "/start")
+# --- የቦት ሎጂክ ---
+@dp.message(Command("start"))
 async def send_welcome(message: Types.Message):
     await message.reply(
         "እንኳን ወደ ስማርት ሱቅ ማስተዳደሪያ ቦት በሰላም መጡ! 🛍️\n\n"
         "ለመጠቀም ከታች ያሉትን አማራጮች ይጫኑ፦",
         reply_markup=get_main_menu()
     )
-
-# --- BUTTON HANDLERS (የባተኖች ምላሽ) ---
 
 @dp.callback_query(F.data == "check_expiry")
 async def bot_check_expiry(callback: Types.CallbackQuery):
@@ -90,14 +87,15 @@ async def bot_check_credit(callback: Types.CallbackQuery):
         
     await callback.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
 
-# --- 2. VERCEL WEBHOOK ENDPOINT ---
-
+# --- VERCEL WEBHOOK ENDPOINT ---
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):
     try:
         request_json = await request.json()
         update = Update.model_validate(request_json, context={"bot": bot})
+        
+        # በVercel ሰርቨርለስ ላይ ክራሽ እንዳይሆን አሲንክ ሉፑን እዚህ ጋር እናስገድደዋለን
         await dp.feed_update(bot, update)
         return {"status": "ok"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"status": "error", "message": str(e)}
