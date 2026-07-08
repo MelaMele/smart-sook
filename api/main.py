@@ -35,16 +35,24 @@ class CreditCreate(BaseModel):
     total_debt: float
     phone_number: str | None = None
 
+class FinanceCreate(BaseModel):
+    type: str  # 'income' ወይም 'expense'
+    amount: float
+    description: str
+
 # --- 3. KEYBOARD MENU ---
 def get_main_menu():
     markup = InlineKeyboardMarkup()
-    markup.row(InlineKeyboardButton("➕ አዲስ ዕቃ መዝግብ (Mini App)", web_app=telebot.types.WebAppInfo(url="https://smart-sook.vercel.app/")))
+    markup.row(InlineKeyboardButton("➕ አዲስ ዕቃ / ሂሳብ መዝግብ (Mini App)", web_app=telebot.types.WebAppInfo(url="https://smart-sook.vercel.app/")))
     markup.row(
         InlineKeyboardButton("📦 የሱቅ ክምችት (Shelf)", callback_data="check_stock"),
         InlineKeyboardButton("⛨ ማከማቻ ክፍል (Store)", callback_data="check_warehouse")
     )
-    markup.row(InlineKeyboardButton("⚠️ ኤክስፓየር ዴት (Expiry)", callback_data="check_expiry"))
-    markup.row(InlineKeyboardButton("📝 የዱቤ መዝገብ (Credit)", callback_data="check_credit"))
+    markup.row(
+        InlineKeyboardButton("⚠️ ኤክስፓየር (Expiry)", callback_data="check_expiry"),
+        InlineKeyboardButton("📝 የዱቤ መዝገብ (Credit)", callback_data="check_credit")
+    )
+    markup.row(InlineKeyboardButton("💰 የዛሬ የቀን ሂሳብ ሪፖርት (Finance)", callback_data="check_finance"))
     return markup
 
 # --- 4. TELEGRAM BOT HANDLERS ---
@@ -129,6 +137,45 @@ def bot_check_credit(call):
     except Exception as e:
         bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
 
+@bot.callback_query_handler(func=lambda call: call.data == "check_finance")
+def bot_check_finance(call):
+    try:
+        today_str = str(date.today())
+        # የዛሬ መዝገቦችን ከዳታቤዝ ማምጣት
+        data = supabase.table("finance_records").select("type, amount, description").gte("created_at", f"{today_str}T00:00:00").execute()
+        
+        if not data.data:
+            bot.edit_message_text("📊 ለዛሬ ቀን እስካሁን የተመዘገበ የገቢም ሆነ የወጪ ሂሳብ የለም።", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
+            return
+            
+        total_income = 0
+        total_expense = 0
+        details = ""
+        
+        for rec in data.data:
+            amt = float(rec['amount'])
+            if rec['type'] == 'income':
+                total_income += amt
+                details += f"📥 +{amt} ብር ({rec['description']})\n"
+            else:
+                total_expense += amt
+                details += f"📤 -{amt} ብር ({rec['description']})\n"
+                
+        net_profit = total_income - total_expense
+        profit_status = "📈 የተጣራ ትርፍ" if net_profit >= 0 else "📉 ኪሳራ"
+        
+        response = f"📊 **የዛሬ ዕለት የሂሳብ ማጠቃለያ ሪፖርት ({today_str})**\n"
+        response += f"----------------------------------------\n"
+        response += f"📥 ጠቅላላ ገቢ፦ **{total_income:.2f} ብር**\n"
+        response += f"📤 ጠቅላላ ወጪ፦ **{total_expense:.2f} ብር**\n"
+        response += f"----------------------------------------\n"
+        response += f"{profit_status}፦ **{abs(net_profit):.2f} ብር**\n\n"
+        response += f"📋 **ዝርዝር እንቅስቃሴዎች፦**\n{details}"
+        
+        bot.edit_message_text(response, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=get_main_menu())
+    except Exception as e:
+        bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
+
 # --- 5. FASTAPI ROUTES (WEBHOOK & FRONTEND) ---
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -204,6 +251,14 @@ def create_credit(credit: CreditCreate):
         else:
             data = supabase.table("customers_credit").insert(credit.model_dump()).execute()
             
+        return {"status": "success", "data": data.data}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/finance")
+def create_finance(finance: FinanceCreate):
+    try:
+        data = supabase.table("finance_records").insert(finance.model_dump()).execute()
         return {"status": "success", "data": data.data}
     except Exception as e:
         return {"status": "error", "message": str(e)}
