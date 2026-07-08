@@ -1,7 +1,23 @@
+import os
+from datetime import date, timedelta
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+from supabase import create_client, Client
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
 
-# የዕቃ መመዝገቢያ ፎርማት መቆጣጠሪያ
+app = FastAPI(title="Smart Sook Cloud API")
+
+# --- 1. CONFIGURATION & CLIENTS ---
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
+
+# --- 2. PYDANTIC SCHEMAS ---
 class ProductCreate(BaseModel):
     name: str
     quantity: int
@@ -9,33 +25,18 @@ class ProductCreate(BaseModel):
     buying_price: float
     selling_price: float
     expiry_date: str
-import os
-from fastapi import FastAPI, Request
-from datetime import date, timedelta
-from supabase import create_client, Client
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
 
-app = FastAPI()
-
-# ኮንፊገሬሽን
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False) # threaded=False መሆኑ ለሰርቨርለስ ወሳኝ ነው
-
-# --- ኪቦርድ ማውጫ ---
+# --- 3. KEYBOARD MENU ---
 def get_main_menu():
     markup = InlineKeyboardMarkup()
+    # የቴሌግራም ሚኒ አፕ መክፈቻ ባተን
+    markup.row(InlineKeyboardButton("➕ አዲስ ዕቃ መዝግብ (Mini App)", web_app=telebot.types.WebAppInfo(url="https://smart-sook.vercel.app/")))
     markup.row(InlineKeyboardButton("📦 የዕቃዎች ክምችት (Stock)", callback_data="check_stock"))
     markup.row(InlineKeyboardButton("⚠️ ኤክስፓየር ዴት (Expiry)", callback_data="check_expiry"))
-    markup.row(InlineKeyboardButton("💰 የቀን ሂሳብ (Finance)", callback_data="check_finance"))
     markup.row(InlineKeyboardButton("📝 የዱቤ መዝገብ (Credit)", callback_data="check_credit"))
     return markup
 
-# --- የቦት ሎጂክ ---
+# --- 4. TELEGRAM BOT HANDLERS ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     bot.reply_to(
@@ -91,7 +92,25 @@ def bot_check_credit(call):
     except Exception as e:
         bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
 
-# --- ቨርሰል ዌብሁክ ---
+# --- 5. FASTAPI ROUTES (WEBHOOK & FRONTEND) ---
+@app.get("/", response_class=HTMLResponse)
+def read_root():
+    """ ወደ ዋናው ሊንክ ሲገባ ሚኒ አፑን (HTML ገጹን) እንዲከፍት ማድረግ """
+    try:
+        with open("api/index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h3>index.html ፋይል በ api/ ፎልደር ውስጥ አልተገኘም!</h3>"
+
+@app.post("/api/products")
+def create_product(product: ProductCreate):
+    """ ከሚኒ አፑ የሚመጣውን ዳታ ተቀብሎ Supabase ላይ መመዝገብ """
+    try:
+        data = supabase.table("products").insert(product.model_dump()).execute()
+        return {"status": "success", "data": data.data}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):
     try:
@@ -101,7 +120,3 @@ async def telegram_webhook(request: Request):
         return {"status": "ok"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-@app.get("/")
-def read_root():
-    return {"status": "active", "message": "Smart Sook API is live and clean!"}
