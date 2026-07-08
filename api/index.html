@@ -10,10 +10,11 @@
 <body class="bg-gray-100 font-sans p-4">
 
     <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-6">
-        <div class="flex justify-between border-b border-gray-200 mb-6 pb-2 text-sm font-semibold">
-            <button onclick="switchTab('tab-product')" id="btn-product" class="text-blue-600 border-b-2 border-blue-600 pb-1 w-1/3">📦 ዕቃ መዝግብ</button>
-            <button onclick="switchTab('tab-transfer')" id="btn-transfer" class="text-gray-500 pb-1 w-1/3">🔄 ዕቃ አዛውር</button>
-            <button onclick="switchTab('tab-credit')" id="btn-credit" class="text-gray-500 pb-1 w-1/3">📝 ዱቤ መዝግብ</button>
+        <div class="flex flex-wrap justify-between border-b border-gray-200 mb-6 pb-2 text-xs font-semibold gap-y-2">
+            <button onclick="switchTab('tab-product')" id="btn-product" class="text-blue-600 border-b-2 border-blue-600 pb-1 w-[22%]">📦 ዕቃ መዝግብ</button>
+            <button onclick="switchTab('tab-transfer')" id="btn-transfer" class="text-gray-500 pb-1 w-[22%]">🔄 ዕቃ አዛውር</button>
+            <button onclick="switchTab('tab-credit')" id="btn-credit" class="text-gray-500 pb-1 w-[22%]">📝 ዱቤ መዝግብ</button>
+            <button onclick="switchTab('tab-finance')" id="btn-finance" class="text-gray-500 pb-1 w-[22%]">💰 ቀን ሂሳብ</button>
         </div>
 
         <div id="tab-product" class="tab-content">
@@ -84,6 +85,28 @@
                 <button type="submit" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl shadow-lg">✍️ የዱቤ መዝገብ አስቀምጥ</button>
             </form>
         </div>
+
+        <div id="tab-finance" class="tab-content hidden">
+            <h3 class="text-xl font-bold text-gray-800 mb-4 text-center">💰 የዕለት ሂሳብ መመዝገቢያ</h3>
+            <form id="financeForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">የመዝገብ አይነት</label>
+                    <select id="f_type" class="w-full mt-1 p-3 border border-gray-300 rounded-xl outline-none bg-white">
+                        <option value="income">📥 ገቢ (የዕቃ ሽያጭ / ሌላ ገቢ)</option>
+                        <option value="expense">📤 ወጪ (ሱቅ ኪራይ / ዕቃ መግዣ / ሌላ ወጪ)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">የገንዘብ መጠን (ብር)</label>
+                    <input type="number" step="0.01" id="f_amount" required class="w-full mt-1 p-3 border border-gray-300 rounded-xl outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">ማብራሪያ (ማስታወሻ)</label>
+                    <input type="text" id="f_description" placeholder="ለምሳሌ፦ የዛሬ የሳሙና ሽያጭ" required class="w-full mt-1 p-3 border border-gray-300 rounded-xl outline-none">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl shadow-lg">💵 ሂሳብ መዝግብ</button>
+            </form>
+        </div>
     </div>
 
     <script>
@@ -103,7 +126,6 @@
             document.getElementById(activeBtn).classList.add('text-blue-600', 'border-b-2', 'border-blue-600');
         }
 
-        // 1. አዲስ ዕቃ መመዝገብ (የመጀመሪያ ምዝገባ ወደ Warehouse ይሄዳል)
         document.getElementById('productForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
@@ -117,7 +139,6 @@
             sendData('/api/products', data, "ዕቃው በማከማቻ ክፍል ተመዝግቧል!");
         });
 
-        // 2. ዕቃ ማዘዋወር
         document.getElementById('transferForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
@@ -127,7 +148,6 @@
             sendData('/api/transfer', data, "ዕቃው ወደ ሱቅ መደርደሪያ ተዛውሯል!");
         });
 
-        // 3. ዱቤ መመዝገብ
         document.getElementById('creditForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
@@ -136,6 +156,17 @@
                 phone_number: document.getElementById('c_phone').value || null
             };
             sendData('/api/credit', data, "የዱቤ መዝገቡ በተሳካ ሁኔታ ተቀምጧል!");
+        });
+
+        // 4. የፋይናንስ መዝገብ መላኪያ
+        document.getElementById('financeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                type: document.getElementById('f_type').value,
+                amount: parseFloat(document.getElementById('f_amount').value),
+                description: document.getElementById('f_description').value
+            };
+            sendData('/api/finance', data, "የፋይናንስ መረጃው በተሳካ ሁኔታ ተመዝግቧል!");
         });
 
         async function sendData(url, bodyData, successMsg) {
