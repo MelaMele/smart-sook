@@ -26,6 +26,15 @@ class ProductCreate(BaseModel):
     selling_price: float
     expiry_date: str
 
+class TransferCreate(BaseModel):
+    product_name: str
+    quantity: int
+
+class CreditCreate(BaseModel):
+    customer_name: str
+    total_debt: float
+    phone_number: str | None = None
+
 # --- 3. KEYBOARD MENU ---
 def get_main_menu():
     markup = InlineKeyboardMarkup()
@@ -132,7 +141,69 @@ def read_root():
 @app.post("/api/products")
 def create_product(product: ProductCreate):
     try:
-        data = supabase.table("products").insert(product.model_dump()).execute()
+        existing = supabase.table("warehouse_stock").select("id, quantity").eq("product_name", product.name).execute()
+        if existing.data:
+            new_qty = existing.data[0]['quantity'] + product.quantity
+            supabase.table("warehouse_stock").update({"quantity": new_qty}).eq("id", existing.data[0]['id']).execute()
+        else:
+            supabase.table("warehouse_stock").insert({
+                "product_name": product.name,
+                "quantity": product.quantity,
+                "barcode": product.barcode
+            }).execute()
+            
+        shelf_exist = supabase.table("products").select("id").eq("name", product.name).execute()
+        if not shelf_exist.data:
+            supabase.table("products").insert({
+                "name": product.name,
+                "quantity": 0,
+                "barcode": product.barcode,
+                "buying_price": product.buying_price,
+                "selling_price": product.selling_price,
+                "expiry_date": product.expiry_date
+            }).execute()
+            
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/transfer")
+def transfer_product(transfer: TransferCreate):
+    try:
+        w_item = supabase.table("warehouse_stock").select("quantity, barcode").eq("product_name", transfer.product_name).execute()
+        if not w_item.data or w_item.data[0]['quantity'] < transfer.quantity:
+            return {"status": "error", "message": "በቂ ዕቃ ማከማቻ ውስጥ የለም!"}
+            
+        new_w_qty = w_item.data[0]['quantity'] - transfer.quantity
+        barcode = w_item.data[0]['barcode']
+        
+        supabase.table("warehouse_stock").update({"quantity": new_w_qty}).eq("product_name", transfer.product_name).execute()
+        
+        shelf_item = supabase.table("products").select("quantity").eq("name", transfer.product_name).execute()
+        if shelf_item.data:
+            new_s_qty = shelf_item.data[0]['quantity'] + transfer.quantity
+            supabase.table("products").update({"quantity": new_s_qty}).eq("name", transfer.product_name).execute()
+        else:
+            supabase.table("products").insert({
+                "name": transfer.product_name,
+                "quantity": transfer.quantity,
+                "barcode": barcode
+            }).execute()
+            
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/credit")
+def create_credit(credit: CreditCreate):
+    try:
+        existing = supabase.table("customers_credit").select("id, total_debt").eq("customer_name", credit.customer_name).execute()
+        if existing.data:
+            new_debt = float(existing.data[0]['total_debt']) + credit.total_debt
+            data = supabase.table("customers_credit").update({"total_debt": new_debt, "phone_number": credit.phone_number}).eq("id", existing.data[0]['id']).execute()
+        else:
+            data = supabase.table("customers_credit").insert(credit.model_dump()).execute()
+            
         return {"status": "success", "data": data.data}
     except Exception as e:
         return {"status": "error", "message": str(e)}
