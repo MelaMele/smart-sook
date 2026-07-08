@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>አዲስ ዕቃ መመዝገቢያ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body class="bg-gray-100 font-sans p-4">
+
+    <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">📦 አዲስ ዕቃ መመዝገቢያ</h2>
+        
+        <form id="productForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700">የዕቃው ስም</label>
+                <input type="text" id="name" required class="w-full mt-1 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">ብዛት (Quantity)</label>
+                    <input type="number" id="quantity" required class="w-full mt-1 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">ባርኮድ (ካለ)</label>
+                    <input type="text" id="barcode" class="w-full mt-1 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">የተገዛበት ዋጋ</label>
+                    <input type="number" step="0.01" id="buying_price" required class="w-full mt-1 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700">የሚሸጥበት ዋጋ</label>
+                    <input type="number" step="0.01" id="selling_price" required class="w-full mt-1 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700">የአገልግሎት ማብቂያ ቀን (Expiry Date)</label>
+                <input type="date" id="expiry_date" required class="w-full mt-1 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition duration-300 shadow-lg">
+                💾 ዕቃውን መዝግብ
+            </button>
+        </form>
+    </div>
+
+    <script>
+        // የቴሌግራም ሚኒ አፕን ማስጀመር
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // ሙሉ ስክሪን እንዲሆን
+
+        document.getElementById('productForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const productData = {
+                name: document.getElementById('name').value,
+                quantity: parseInt(document.getElementById('quantity').value),
+                barcode: document.getElementById('barcode').value || null,
+                buying_price: parseFloat(document.getElementById('buying_price').value),
+                selling_price: parseFloat(document.getElementById('selling_price').value),
+                expiry_date: document.getElementById('expiry_date').value
+            };
+
+            try {
+                // መረጃውን ቀጥታ ወደ እኛ FastAPI ባክኤንድ መላክ
+                const response = await fetch('/api/products', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(productData)
+                });
+
+                if (response.ok) {
+                    tg.showAlert("🎯 ዕቃው በተሳካ ሁኔታ ተመዝግቧል!");
+                    tg.close(); // ሚኒ አፑን መዝጋት
+                } else {
+                    tg.showAlert("❌ ስህተት ተፈጥሯል፣ እባክዎ ድጋሚ ይሞክሩ።");
+                }
+            } catch (error) {
+                tg.showAlert("🚨 ከሰርቨር ጋር መገናኘት አልተቻለም፦ " + error);
+            }
+        });
+    </script>
+</body>
+</html>
