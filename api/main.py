@@ -60,38 +60,36 @@ def bot_out_of_stock(call):
     except Exception as e:
         bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
 
-@bot.callback_query_handler(func=lambda call: call.data == "check_expiry")
-def bot_check_expiry(call):
-    today = date.today()
-    warning_date = today + timedelta(days=30)
+@bot.callback_query_handler(func=lambda call: call.data == "check_stock")
+def bot_out_of_stock(call):
     try:
-        data = supabase.table("products").select("name, expiry_date").lte("expiry_date", str(warning_date)).gte("expiry_date", str(today)).execute()
+        # ሁሉንም እቃዎች ከዳታቤዝ ማምጣት
+        data = supabase.table("products").select("name, quantity").execute()
+        
         if not data.data:
-            bot.edit_message_text("በሚቀጥሉት 30 ቀናት ውስጥ ኤክስፓየር የሚሆን ዕቃ የለም። ✅", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
+            bot.edit_message_text("በሱቁ ውስጥ ምንም የተመዘገበ ዕቃ የለም። 🛍️", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
             return
             
-        response = "⚠️ **ኤክስፓየር ሊሆኑ የቀረቡ ዕቃዎች:**\n\n"
+        response = "📦 **የሱቁ ዕቃዎች አጠቃላይ ክምችት (Stock)፦**\n\n"
+        out_of_stock_warnings = ""
+        
         for item in data.data:
-            response += f"• {item['name']} - ቀን: {item['expiry_date']}\n"
-        bot.edit_message_text(response, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=get_main_menu())
-    except Exception as e:
-        bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
-
-@bot.callback_query_handler(func=lambda call: call.data == "check_credit")
-def bot_check_credit(call):
-    try:
-        data = supabase.table("customers_credit").select("customer_name, total_debt").gt("total_debt", 0).execute()
-        if not data.data:
-            bot.edit_message_text("በአሁኑ ሰዓት ምንም የዱቤ ዕዳ ያለበት ደንበኛ የለም። 🕊️", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
-            return
+            qty = item['quantity']
+            # እቃው ካለቀ ወይም ከ 5 በታች ከሆነ ልዩ ምልክት መስጠት
+            if qty == 0:
+                out_of_stock_warnings += f"❌ {item['name']} - **አልቋል!** (0)\n"
+            elif qty <= 5:
+                out_of_stock_warnings += f"⚠️ {item['name']} - ሊያልቅ ነው! ({qty})\n"
+            else:
+                response += f"• {item['name']} - ብዛት፦ {qty}\n"
+        
+        # ማስጠንቀቂያዎች ካሉ ከላይ እንዲታዩ ማድረግ
+        if out_of_stock_warnings:
+            response = "🚨 **አስቸኳይ ትኩረት የሚሹ፦**\n" + out_of_stock_warnings + "\n" + response
             
-        response = "📝 **የዱቤ መዝገብ (ባለዕዳዎች):**\n\n"
-        for customer in data.data:
-            response += f"• {customer['customer_name']} - ዕዳ: {customer['total_debt']} ብር\n"
         bot.edit_message_text(response, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=get_main_menu())
     except Exception as e:
         bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
-
 # --- 5. FASTAPI ROUTES (WEBHOOK & FRONTEND) ---
 @app.get("/", response_class=HTMLResponse)
 def read_root():
