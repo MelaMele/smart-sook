@@ -1,7 +1,6 @@
 import os
-import json
 import asyncio
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from datetime import date, timedelta
 from supabase import create_client, Client
 from aiogram import Bot, Dispatcher, Types, F
@@ -43,59 +42,74 @@ async def bot_check_expiry(callback: Types.CallbackQuery):
     today = date.today()
     warning_date = today + timedelta(days=30)
     
-    data = supabase.table("products")\
-        .select("name, expiry_date")\
-        .lte("expiry_date", str(warning_date))\
-        .gte("expiry_date", str(today))\
-        .execute()
-    
-    if not data.data:
-        await callback.message.edit_text("በሚቀጥሉት 30 ቀናት ውስጥ ኤክስፓየር የሚሆን ዕቃ የለም። ✅", reply_markup=get_main_menu())
-        return
+    try:
+        data = supabase.table("products")\
+            .select("name, expiry_date")\
+            .lte("expiry_date", str(warning_date))\
+            .gte("expiry_date", str(today))\
+            .execute()
         
-    response = "⚠️ **ኤክስፓየር ሊሆኑ የቀረቡ ዕቃዎች:**\n\n"
-    for item in data.data:
-        response += f"• {item['name']} - ቀን: {item['expiry_date']}\n"
-    
-    await callback.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
+        if not data.data:
+            await callback.message.edit_text("በሚቀጥሉት 30 ቀናት ውስጥ ኤክስፓየር የሚሆን ዕቃ የለም። ✅", reply_markup=get_main_menu())
+            return
+            
+        response = "⚠️ **ኤክስፓየር ሊሆኑ የቀረቡ ዕቃዎች:**\n\n"
+        for item in data.data:
+            response += f"• {item['name']} - ቀን: {item['expiry_date']}\n"
+        
+        await callback.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
+    except Exception as e:
+        await callback.message.edit_text(f"የዳታቤዝ ስህተት አጋጥሟል፦ {str(e)}", reply_markup=get_main_menu())
 
 @dp.callback_query(F.data == "check_stock")
 async def bot_out_of_stock(callback: Types.CallbackQuery):
-    data = supabase.table("products").select("name, quantity").lte("quantity", 5).execute()
-    
-    if not data.data:
-        await callback.message.edit_text("ክምችቱ አስተማማኝ ነው፣ ያለቀ ዕቃ የለም። ✅", reply_markup=get_main_menu())
-        return
+    try:
+        data = supabase.table("products").select("name, quantity").lte("quantity", 5).execute()
         
-    response = "🚨 **ያለቁ ወይም ሊያልቁ የተቃረቡ ዕቃዎች:**\n\n"
-    for item in data.data:
-        response += f"• {item['name']} - የቀረው ብዛት: {item['quantity']}\n"
-        
-    await callback.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
+        if not data.data:
+            await callback.message.edit_text("ክምችቱ አስተማማኝ ነው፣ ያለቀ ዕቃ የለም። ✅", reply_markup=get_main_menu())
+            return
+            
+        response = "🚨 **ያለቁ ወይም ሊያልቁ የተቃረቡ ዕቃዎች:**\n\n"
+        for item in data.data:
+            response += f"• {item['name']} - የቀረው ብዛት: {item['quantity']}\n"
+            
+        await callback.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
+    except Exception as e:
+        await callback.message.edit_text(f"የዳታቤዝ ስህተት አጋጥሟል፦ {str(e)}", reply_markup=get_main_menu())
 
 @dp.callback_query(F.data == "check_credit")
 async def bot_check_credit(callback: Types.CallbackQuery):
-    data = supabase.table("customers_credit").select("customer_name, total_debt").gt("total_debt", 0).execute()
-    
-    if not data.data:
-        await callback.message.edit_text("በአሁኑ ሰዓት ምንም የዱቤ ዕዳ ያለበት ደንበኛ የለም። 🕊️", reply_markup=get_main_menu())
-        return
+    try:
+        data = supabase.table("customers_credit").select("customer_name, total_debt").gt("total_debt", 0).execute()
         
-    response = "📝 **የዱቤ መዝገብ (ባለዕዳዎች):**\n\n"
-    for customer in data.data:
-        response += f"• {customer['customer_name']} - ዕዳ: {customer['total_debt']} ብር\n"
-        
-    await callback.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
+        if not data.data:
+            await callback.message.edit_text("በአሁኑ ሰዓት ምንም የዱቤ ዕዳ ያለበት ደንበኛ የለም። 🕊️", reply_markup=get_main_menu())
+            return
+            
+        response = "📝 **የዱቤ መዝገብ (ባለዕዳዎች):**\n\n"
+        for customer in data.data:
+            response += f"• {customer['customer_name']} - ዕዳ: {customer['total_debt']} ብር\n"
+            
+        await callback.message.edit_text(response, parse_mode="Markdown", reply_markup=get_main_menu())
+    except Exception as e:
+        await callback.message.edit_text(f"የዳታቤዝ ስህተት አጋጥሟል፦ {str(e)}", reply_markup=get_main_menu())
 
-# --- VERCEL WEBHOOK ENDPOINT ---
+# --- VERCEL WEBHOOK ENDPOINT (ሰርቨርለስን የማይከሽፍ አዲስ አቀራረብ) ---
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request):
     try:
         request_json = await request.json()
         update = Update.model_validate(request_json, context={"bot": bot})
         
-        # በVercel ሰርቨርለስ ላይ ክራሽ እንዳይሆን አሲንክ ሉፑን እዚህ ጋር እናስገድደዋለን
-        await dp.feed_update(bot, update)
+        # የVercel Event Loop ግጭቶችን ሙሉ በሙሉ ለማስቀረት
+        asyncio.run_coroutine_threadsafe(dp.feed_update(bot, update), asyncio.get_event_loop())
+        
         return {"status": "ok"}
     except Exception as e:
+        # ለVercel ስህተቱን ደብቀህ 200 በለው (ይህ ሰርቨሩ እንዳይወድቅ ያደርገዋል)
         return {"status": "error", "message": str(e)}
+
+@app.get("/")
+def read_root():
+    return {"message": "Smart Sook API is running smoothly!"}
