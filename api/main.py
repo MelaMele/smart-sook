@@ -30,7 +30,10 @@ class ProductCreate(BaseModel):
 def get_main_menu():
     markup = InlineKeyboardMarkup()
     markup.row(InlineKeyboardButton("➕ አዲስ ዕቃ መዝግብ (Mini App)", web_app=telebot.types.WebAppInfo(url="https://smart-sook.vercel.app/")))
-    markup.row(InlineKeyboardButton("📦 የዕቃዎች ክምችት (Stock)", callback_data="check_stock"))
+    markup.row(
+        InlineKeyboardButton("📦 የሱቅ ክምችት (Shelf)", callback_data="check_stock"),
+        InlineKeyboardButton("⛨ ማከማቻ ክፍል (Store)", callback_data="check_warehouse")
+    )
     markup.row(InlineKeyboardButton("⚠️ ኤክስፓየር ዴት (Expiry)", callback_data="check_expiry"))
     markup.row(InlineKeyboardButton("📝 የዱቤ መዝገብ (Credit)", callback_data="check_credit"))
     return markup
@@ -48,14 +51,12 @@ def send_welcome(message):
 def bot_check_stock(call):
     try:
         data = supabase.table("products").select("name, quantity").execute()
-        
         if not data.data:
-            bot.edit_message_text("በሱቁ ውስጥ ምንም የተመዘገበ ዕቃ የለም። 🛍️", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
+            bot.edit_message_text("በሱቅ መደርደሪያዎች ላይ ምንም ዕቃ የለም። 🛍️", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
             return
             
-        response = "📦 **የሱቁ ዕቃዎች አጠቃላይ ክምችት (Stock)፦**\n\n"
+        response = "📦 **የሱቅ መደርደሪያ ዕቃዎች ክምችት (Shelf)፦**\n\n"
         out_of_stock_warnings = ""
-        
         for item in data.data:
             qty = item['quantity']
             if qty == 0:
@@ -67,8 +68,23 @@ def bot_check_stock(call):
         
         if out_of_stock_warnings:
             response = "🚨 **አስቸኳይ ትኩረት የሚሹ፦**\n" + out_of_stock_warnings + "\n" + response
-            
         bot.edit_message_text(response, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=get_main_menu())
+    except Exception as e:
+        bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
+
+@bot.callback_query_handler(func=lambda call: call.data == "check_warehouse")
+def bot_check_warehouse(call):
+    try:
+        data = supabase.table("warehouse_stock").select("product_name, quantity, location_rack").execute()
+        if not data.data:
+            bot.edit_message_text("በማከማቻ ክፍሉ (Warehouse) ውስጥ ምንም ዕቃ የለም። ⛨", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
+            return
+            
+        response = "⛨ **የማከማቻ ክፍል ዕቃዎች ዝርዝር (Store)፦**\n\n"
+        for item in data.data:
+            rack = f" [ክፍል: {item['location_rack']}]" if item['location_rack'] else ""
+            response += f"• {item['product_name']} - ብዛት፦ {item['quantity']}{rack}\n"
+        bot.edit_message_text(response, call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
     except Exception as e:
         bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
 
