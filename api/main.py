@@ -272,3 +272,50 @@ async def telegram_webhook(request: Request):
         return {"status": "ok"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+@app.get("/api/cron/nightly-report")
+def send_nightly_report():
+    """ በየቀኑ ማታ በክሮን ጆብ ተጠርቶ የዕለቱን ሪፖርት ለባለሱቁ ቀጥታ የሚልክ """
+    try:
+        today_str = str(date.today())
+        # የዛሬ መዝገቦችን ከዳታቤዝ ማምጣት
+        data = supabase.table("finance_records").select("type, amount, description").gte("created_at", f"{today_str}T00:00:00").execute()
+        
+        # የባለሱቁን የቴሌግራም ቻት አይዲ እዚህ ጋር ያስገቡ (ለምሳሌ፦ ከቦቱ ያገኙትን የግሎባል አይዲ)
+        # ማሳሰቢያ፦ ይህንን ለጊዜው ወደ ራስህ አይዲ ለመላክ መጀመሪያ ቦቱን ስታርት ካደረግክበት Chat ID ጋር አገናኘው
+        ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID") 
+        if not ADMIN_CHAT_ID:
+            return {"status": "error", "message": "ADMIN_CHAT_ID አልተገኘም!"}
+
+        if not data.data:
+            bot.send_message(ADMIN_CHAT_ID, f"🌙 **የዕለቱ ማጠቃለያ ሪፖርት ({today_str})**\n\n📊 ለዛሬ ቀን የተመዘገበ የገቢም ሆነ የወጪ ሂሳብ የለም። ሱቁ መልካም ምሽት ይመኛል! 🕊️")
+            return {"status": "success", "message": "No records, empty report sent."}
+            
+        total_income = 0
+        total_expense = 0
+        details = ""
+        
+        for rec in data.data:
+            amt = float(rec['amount'])
+            if rec['type'] == 'income':
+                total_income += amt
+                details += f"📥 +{amt} ብር ({rec['description']})\n"
+            else:
+                total_expense += amt
+                details += f"📤 -{amt} ብር ({rec['description']})\n"
+                
+        net_profit = total_income - total_expense
+        profit_status = "📈 የተጣራ ትርፍ" if net_profit >= 0 else "📉 ኪሳራ"
+        
+        response = f"🌙 **የዛሬ ዕለት አውቶማቲክ የሂሳብ ሪፖርት ({today_str})**\n"
+        response += f"----------------------------------------\n"
+        response += f"📥 ጠቅላላ ገቢ፦ **{total_income:.2f} ብር**\n"
+        response += f"📤 ጠቅላላ ወጪ፦ **{total_expense:.2f} ብር**\n"
+        response += f"----------------------------------------\n"
+        response += f"{profit_status}፦ **{abs(net_profit):.2f} ብር**\n\n"
+        response += f"📋 **የዕለቱ ዝርዝር እንቅስቃሴዎች፦**\n{details}"
+        
+        # ቀጥታ መልዕክቱን ለባለሱቁ መላክ
+        bot.send_message(ADMIN_CHAT_ID, response, parse_mode="Markdown")
+        return {"status": "success", "message": "Nightly report sent successfully."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
