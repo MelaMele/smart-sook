@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>የደንበኞች መተግበሪያ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body class="bg-slate-50 font-sans p-4">
+
+    <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-6 border border-slate-100">
+        <div class="text-center mb-6">
+            <h2 id="welcome-msg" class="text-xl font-bold text-slate-800">እንኳን በሰላም መጡ! 👋</h2>
+            <p class="text-sm text-slate-500 mt-1">እዚህ ገጽ ላይ የእርስዎን ሂሳብ ማየትና አዲስ ምርት ማዘዝ ይችላሉ።</p>
+        </div>
+
+        <div class="bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-2xl p-5 shadow-md mb-6">
+            <span class="text-xs font-medium opacity-80 uppercase tracking-wider">የአሁኑ የዱቤ ዕዳዎ</span>
+            <h3 id="my-debt" class="text-3xl font-black mt-1">0.00 ብር</h3>
+            <div class="mt-3 pt-3 border-t border-white/20 text-xs opacity-90 flex justify-between">
+                <span>የደንበኛ መለያ ቁጥር፦</span>
+                <span id="user-id" class="font-mono font-bold">-</span>
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            <h4 class="text-md font-bold text-slate-700 flex items-center gap-2">🛒 አዲስ ምርት ይዘዙ</h4>
+            <form id="orderForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-600">የምርት አይነት</label>
+                    <select id="order_product" required class="w-full mt-1 p-3 border border-slate-200 rounded-xl outline-none bg-white shadow-sm text-sm">
+                        <option value="የፈሳሽ ሳሙና (High Quality)">የፈሳሽ ሳሙና (High Quality)</option>
+                        <option value="የእጅ ሳሙና (Handwash)">የእጅ ሳሙና (Handwash)</option>
+                        <option value="የባር ሳሙና">የባር ሳሙና</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-600">የሚፈልጉት ብዛት</label>
+                    <input type="number" id="order_qty" min="1" value="1" required class="w-full mt-1 p-3 border border-slate-200 rounded-xl outline-none shadow-sm text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-600">ማድረሻ አድራሻ / ማስታወሻ</label>
+                    <input type="text" id="order_note" placeholder="ለምሳሌ፦ መርካቶ ሱቅ ቁጥር 12" required class="w-full mt-1 p-3 border border-slate-200 rounded-xl outline-none shadow-sm text-sm">
+                </div>
+                <button type="submit" class="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-slate-800 transition">🚀 ትዕዛዝ አስተላልፍ</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        // ከቴሌግራም የተጠቃሚውን መረጃ ማምጣት
+        const user = tg.initDataUnsafe?.user;
+        const userId = user ? user.id : "123456"; // ለሙከራ ካልሆነ የቴሌግራም አይዲ
+        const firstName = user ? user.first_name : "ደንበኛ";
+
+        document.getElementById('welcome-msg').innerText = `እንኳን በሰላም መጡ፣ ${firstName}! 👋`;
+        document.getElementById('user-id').innerText = userId;
+
+        // የደንበኛውን የዱቤ ዕዳ ከባክኤንድ ማምጣት
+        async function fetchMyDebt() {
+            try {
+                const response = await fetch(`/api/customer/debt?name=${encodeURIComponent(firstName)}`);
+                const result = await response.json();
+                if (result.status === "success" && result.debt !== null) {
+                    document.getElementById('my-debt').innerText = `${parseFloat(result.debt).toFixed(2)} ብር`;
+                }
+            } catch (error) {
+                console.error("ዕዳን ለማምጣት ስህተት ተፈጥሯል፦", error);
+            }
+        }
+
+        fetchMyDebt();
+
+        // ትዕዛዝ መላክ
+        document.getElementById('orderForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const orderData = {
+                customer_name: firstName,
+                telegram_id: String(userId),
+                product_name: document.getElementById('order_product').value,
+                quantity: parseInt(document.getElementById('order_qty').value),
+                note: document.getElementById('order_note').value
+            };
+
+            try {
+                const response = await fetch('/api/customer/order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                });
+                if (response.ok) {
+                    tg.showAlert("🎯 ትዕዛዝዎ በተሳካ ሁኔታ ደርሶናል። እናዘጋጃለን!");
+                    tg.close();
+                } else {
+                    tg.showAlert("❌ ትዕዛዝ ማስተላለፍ አልተቻለም።");
+                }
+            } catch (error) {
+                tg.showAlert("🚨 ስህተት ተፈጥሯል፦ " + error);
+            }
+        });
+    </script>
+</body>
+</html>
