@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>የደንበኞች መተግበሪያ</title>
+    <title>የደንበኞች ማዘዣ ገጽ</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
@@ -11,8 +11,8 @@
 
     <div class="max-w-md mx-auto bg-white rounded-2xl shadow-xl p-6 border border-slate-100">
         <div class="text-center mb-6">
-            <h2 id="welcome-msg" class="text-xl font-bold text-slate-800">እንኳን በሰላም መጡ! 👋</h2>
-            <p class="text-sm text-slate-500 mt-1">እዚህ ገጽ ላይ የእርስዎን ሂሳብ ማየትና አዲስ ምርት ማዘዝ ይችላሉ።</p>
+            <h2 id="shop-title" class="text-xl font-bold text-slate-800">እንኳን በሰላም መጡ! 👋</h2>
+            <p class="text-sm text-slate-500 mt-1">የዕቃዎችን ዝርዝርና መሸጫ ዋጋ አይተው በቀላሉ ይዘዙ።</p>
         </div>
 
         <div class="bg-gradient-to-br from-indigo-600 to-blue-700 text-white rounded-2xl p-5 shadow-md mb-6">
@@ -25,14 +25,12 @@
         </div>
 
         <div class="space-y-4">
-            <h4 class="text-md font-bold text-slate-700 flex items-center gap-2">🛒 አዲስ ምርት ይዘዙ</h4>
+            <h4 class="text-md font-bold text-slate-700 flex items-center gap-2">🛒 ማዘዣ ፎርም</h4>
             <form id="orderForm" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-semibold text-slate-600">የምርት አይነት</label>
+                    <label class="block text-sm font-semibold text-slate-600">የዕቃ አይነት እና የመሸጫ ዋጋ</label>
                     <select id="order_product" required class="w-full mt-1 p-3 border border-slate-200 rounded-xl outline-none bg-white shadow-sm text-sm">
-                        <option value="የፈሳሽ ሳሙና (High Quality)">የፈሳሽ ሳሙና (High Quality)</option>
-                        <option value="የእጅ ሳሙና (Handwash)">የእጅ ሳሙና (Handwash)</option>
-                        <option value="የባር ሳሙና">የባር ሳሙና</option>
+                        <option value="">🔄 ዕቃዎችን በመፈለግ ላይ...</option>
                     </select>
                 </div>
                 <div>
@@ -41,7 +39,7 @@
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-slate-600">ማድረሻ አድራሻ / ማስታወሻ</label>
-                    <input type="text" id="order_note" placeholder="ለምሳሌ፦ መርካቶ ሱቅ ቁጥር 12" required class="w-full mt-1 p-3 border border-slate-200 rounded-xl outline-none shadow-sm text-sm">
+                    <input type="text" id="order_note" placeholder="ለምሳሌ፦ ቪላ ቤት ቁጥር 45" required class="w-full mt-1 p-3 border border-slate-200 rounded-xl outline-none shadow-sm text-sm">
                 </div>
                 <button type="submit" class="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl shadow-lg hover:bg-slate-800 transition">🚀 ትዕዛዝ አስተላልፍ</button>
             </form>
@@ -52,15 +50,40 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // ከቴሌግራም የተጠቃሚውን መረጃ ማምጣት
         const user = tg.initDataUnsafe?.user;
-        const userId = user ? user.id : "123456"; // ለሙከራ ካልሆነ የቴሌግራም አይዲ
+        const userId = user ? user.id : "123456";
         const firstName = user ? user.first_name : "ደንበኛ";
 
-        document.getElementById('welcome-msg').innerText = `እንኳን በሰላም መጡ፣ ${firstName}! 👋`;
+        // 🔗 ከሊንኩ ላይ የሱቁን ስም (shop parameter) መፈለጊያ ሎጂክ
+        const urlParams = new URLSearchParams(window.location.search);
+        const shopName = urlParams.get('shop') || "የሰፈር ውጥ ሱቅ";
+
+        // የገጹን ርዕስ በሱቁ ስም መቀየር
+        document.getElementById('shop-title').innerText = `እንኳን ወደ ${shopName.replace('_', ' ')} በሰላም መጡ! 👋`;
         document.getElementById('user-id').innerText = userId;
 
-        // የደንበኛውን የዱቤ ዕዳ ከባክኤንድ ማምጣት
+        // የዚህን ሱቅ ምርቶች ብቻ ከነመሸጫ ዋጋቸው ከባክኤንድ ማምጣት
+        async function fetchShopProducts() {
+            try {
+                const response = await fetch(`/api/customer/products?shop_name=${encodeURIComponent(shopName)}`);
+                const result = await response.json();
+                if (result.status === "success") {
+                    const selectEl = document.getElementById('order_product');
+                    selectEl.innerHTML = '<option value="">-- እባክዎ ዕቃ ይምረጡ --</option>';
+                    
+                    result.products.forEach(p => {
+                        const option = document.createElement('option');
+                        // ለደንበኛው የሚታየው የመሸጫ ዋጋ (selling_price) ብቻ ነው!
+                        option.value = `${p.name} (${p.selling_price} ብር)`;
+                        option.innerText = `${p.name} — [${p.selling_price} ብር]`;
+                        selectEl.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error("ምርቶችን ለማምጣት ስህተት ተፈጥሯል፦", error);
+            }
+        }
+
         async function fetchMyDebt() {
             try {
                 const response = await fetch(`/api/customer/debt?name=${encodeURIComponent(firstName)}`);
@@ -73,9 +96,10 @@
             }
         }
 
+        // ገጹ ሲከፈት የሚሰሩ
+        fetchShopProducts();
         fetchMyDebt();
 
-        // ትዕዛዝ መላክ
         document.getElementById('orderForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const orderData = {
@@ -83,7 +107,7 @@
                 telegram_id: String(userId),
                 product_name: document.getElementById('order_product').value,
                 quantity: parseInt(document.getElementById('order_qty').value),
-                note: document.getElementById('order_note').value
+                note: `[ሱቅ: ${shopName}] ` + document.getElementById('order_note').value
             };
 
             try {
@@ -93,7 +117,7 @@
                     body: JSON.stringify(orderData)
                 });
                 if (response.ok) {
-                    tg.showAlert("🎯 ትዕዛዝዎ በተሳካ ሁኔታ ደርሶናል። እናዘጋጃለን!");
+                    tg.showAlert("🎯 ትዕዛዝዎ በተሳካ ሁኔታ ለሱቁ ደርሷል። እናመሰግናለን!");
                     tg.close();
                 } else {
                     tg.showAlert("❌ ትዕዛዝ ማስተላለፍ አልተቻለም።");
