@@ -7,7 +7,7 @@ from supabase import create_client, Client
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
 
-app = FastAPI(title="Smart Sook Cloud API")
+app = FastAPI(title="Smart Sook Multi-Shop Cloud API")
 
 # --- 1. CONFIGURATION & CLIENTS ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -18,6 +18,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
 # --- 2. PYDANTIC SCHEMAS ---
+# 🔔 ማሻሻያ፦ ሁሉም መዝገቦች የየራሳቸውን የሱቅ ስም (shop_name) ይይዛሉ
 class ProductCreate(BaseModel):
     name: str
     quantity: int
@@ -25,22 +26,25 @@ class ProductCreate(BaseModel):
     buying_price: float
     selling_price: float
     expiry_date: str
+    shop_name: str = "የሰፈር ውጥ ሱቅ" 
 
 class TransferCreate(BaseModel):
     product_name: str
     quantity: int
+    shop_name: str = "የሰፈር ውጥ ሱቅ"
 
 class CreditCreate(BaseModel):
     customer_name: str
     total_debt: float
     phone_number: str | None = None
+    shop_name: str = "የሰፈር ውጥ ሱቅ"
 
 class FinanceCreate(BaseModel):
     type: str  # 'income' ወይም 'expense'
     amount: float
     description: str
+    shop_name: str = "የሰፈር ውጥ ሱቅ"
 
-# 🔔 አዲስ፦ የደንበኛ ትዕዛዝ መቀበያ ስኪማ
 class OrderCreate(BaseModel):
     customer_name: str
     telegram_id: str
@@ -61,7 +65,6 @@ def get_main_menu():
         InlineKeyboardButton("📝 የዱቤ መዝገብ (Credit)", callback_data="check_credit")
     )
     markup.row(InlineKeyboardButton("💰 የዛሬ የቀን ሂሳብ ሪፖርት (Finance)", callback_data="check_finance"))
-    # 🔔 አዲስ፦ ለደንበኞች ብቻ የሚሆን ልዩ የትዕዛዝ ማቅረቢያ አዝራር
     markup.row(InlineKeyboardButton("🛍️ የደንበኞች ገጽ (Order & Debt)", web_app=telebot.types.WebAppInfo(url="https://smart-sook.vercel.app/customer")))
     return markup
 
@@ -77,7 +80,8 @@ def send_welcome(message):
 @bot.callback_query_handler(func=lambda call: call.data == "check_stock")
 def bot_check_stock(call):
     try:
-        data = supabase.table("products").select("name, quantity").execute()
+        # ለጊዜው ሁሉንም ያመጣል (በኋላ ላይ ከቴሌግራም ዩዘር ጋር ማገናኘት ይቻላል)
+        data = supabase.table("products").select("name, quantity, shop_name").execute()
         if not data.data:
             bot.edit_message_text("በሱቅ መደርደሪያዎች ላይ ምንም ዕቃ የለም። 🛍️", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
             return
@@ -86,12 +90,13 @@ def bot_check_stock(call):
         out_of_stock_warnings = ""
         for item in data.data:
             qty = item['quantity']
+            shop = f" [{item.get('shop_name', 'ሱቅ')}]"
             if qty == 0:
-                out_of_stock_warnings += f"❌ {item['name']} - **አልቋል!** (0)\n"
+                out_of_stock_warnings += f"❌ {item['name']}{shop} - **አልቋል!** (0)\n"
             elif qty <= 5:
-                out_of_stock_warnings += f"⚠️ {item['name']} - ሊያልቅ ነው! ({qty})\n"
+                out_of_stock_warnings += f"⚠️ {item['name']}{shop} - ሊያልቅ ነው! ({qty})\n"
             else:
-                response += f"• {item['name']} - ብዛት፦ {qty}\n"
+                response += f"• {item['name']}{shop} - ብዛት፦ {qty}\n"
         
         if out_of_stock_warnings:
             response = "🚨 **አስቸኳይ ትኩረት የሚሹ፦**\n" + out_of_stock_warnings + "\n" + response
@@ -102,7 +107,7 @@ def bot_check_stock(call):
 @bot.callback_query_handler(func=lambda call: call.data == "check_warehouse")
 def bot_check_warehouse(call):
     try:
-        data = supabase.table("warehouse_stock").select("product_name, quantity, location_rack").execute()
+        data = supabase.table("warehouse_stock").select("product_name, quantity, location_rack, shop_name").execute()
         if not data.data:
             bot.edit_message_text("በማከማቻ ክፍሉ (Warehouse) ውስጥ ምንም ዕቃ የለም። ⛨", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
             return
@@ -110,7 +115,8 @@ def bot_check_warehouse(call):
         response = "⛨ **የማከማቻ ክፍል ዕቃዎች ዝርዝር (Store)፦**\n\n"
         for item in data.data:
             rack = f" [ክፍል: {item['location_rack']}]" if item['location_rack'] else ""
-            response += f"• {item['product_name']} - ብዛት፦ {item['quantity']}{rack}\n"
+            shop = f" ({item.get('shop_name', 'Unknown')})"
+            response += f"• {item['product_name']}{shop} - ብዛት፦ {item['quantity']}{rack}\n"
         bot.edit_message_text(response, call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
     except Exception as e:
         bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
@@ -120,14 +126,15 @@ def bot_check_expiry(call):
     today = date.today()
     warning_date = today + timedelta(days=30)
     try:
-        data = supabase.table("products").select("name, expiry_date").lte("expiry_date", str(warning_date)).gte("expiry_date", str(today)).execute()
+        data = supabase.table("products").select("name, expiry_date, shop_name").lte("expiry_date", str(warning_date)).gte("expiry_date", str(today)).execute()
         if not data.data:
             bot.edit_message_text("በሚቀጥሉት 30 ቀናት ውስጥ ኤክስፓየር የሚሆን ዕቃ የለም። ✅", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
             return
             
         response = "⚠️ **ኤክስፓየር ሊሆኑ የቀረቡ ዕቃዎች:**\n\n"
         for item in data.data:
-            response += f"• {item['name']} - ቀን: {item['expiry_date']}\n"
+            shop = f" [{item.get('shop_name', 'ሱቅ')}]"
+            response += f"• {item['name']}{shop} - ቀን: {item['expiry_date']}\n"
         bot.edit_message_text(response, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=get_main_menu())
     except Exception as e:
         bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
@@ -135,14 +142,15 @@ def bot_check_expiry(call):
 @bot.callback_query_handler(func=lambda call: call.data == "check_credit")
 def bot_check_credit(call):
     try:
-        data = supabase.table("customers_credit").select("customer_name, total_debt").gt("total_debt", 0).execute()
+        data = supabase.table("customers_credit").select("customer_name, total_debt, shop_name").gt("total_debt", 0).execute()
         if not data.data:
             bot.edit_message_text("በአሁኑ ሰዓት ምንም የዱቤ ዕዳ ያለበት ደንበኛ የለም። 🕊️", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
             return
             
         response = "📝 **የዱቤ መዝገብ (ባለዕዳዎች):**\n\n"
         for customer in data.data:
-            response += f"• {customer['customer_name']} - ዕዳ: {customer['total_debt']} ብር\n"
+            shop = f" [{customer.get('shop_name', 'ሱቅ')}]"
+            response += f"• {customer['customer_name']}{shop} - ዕዳ: {customer['total_debt']} ብር\n"
         bot.edit_message_text(response, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=get_main_menu())
     except Exception as e:
         bot.edit_message_text(f"የዳታቤዝ ስህተት፦ {str(e)}", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
@@ -151,8 +159,7 @@ def bot_check_credit(call):
 def bot_check_finance(call):
     try:
         today_str = str(date.today())
-        # የዛሬ መዝገቦችን ከዳታቤዝ ማምጣት
-        data = supabase.table("finance_records").select("type, amount, description").gte("created_at", f"{today_str}T00:00:00").execute()
+        data = supabase.table("finance_records").select("type, amount, description, shop_name").gte("created_at", f"{today_str}T00:00:00").execute()
         
         if not data.data:
             bot.edit_message_text("📊 ለዛሬ ቀን እስካሁን የተመዘገበ የገቢም ሆነ የወጪ ሂሳብ የለም።", call.message.chat.id, call.message.message_id, reply_markup=get_main_menu())
@@ -164,12 +171,13 @@ def bot_check_finance(call):
         
         for rec in data.data:
             amt = float(rec['amount'])
+            shop = f" [{rec.get('shop_name', 'ሱቅ')}]"
             if rec['type'] == 'income':
                 total_income += amt
-                details += f"📥 +{amt} ብር ({rec['description']})\n"
+                details += f"📥 +{amt} ብር ({rec['description']}){shop}\n"
             else:
                 total_expense += amt
-                details += f"📤 -{amt} ብር ({rec['description']})\n"
+                details += f"📤 -{amt} ብር ({rec['description']}){shop}\n"
                 
         net_profit = total_income - total_expense
         profit_status = "📈 የተጣራ ትርፍ" if net_profit >= 0 else "📉 ኪሳራ"
@@ -195,7 +203,6 @@ def read_root():
     except FileNotFoundError:
         return "<h3>index.html ፋይል በ api/ ፎልደር ውስጥ አልተገኘም!</h3>"
 
-# 🔔 አዲስ፦ የደንበኞችን የፊት ገጽ መክፈቻ መስመር
 @app.get("/customer", response_class=HTMLResponse)
 def read_customer_root():
     try:
@@ -204,22 +211,34 @@ def read_customer_root():
     except FileNotFoundError:
         return "<h3>customer.html ፋይል በ api/ ፎልደር ውስጥ አልተገኘም!</h3>"
 
-# 🔔 አዲስ፦ ደንበኞች የራሳቸውን የዱቤ ዕዳ የሚፈልጉበት ኤንድፖይንት
-@app.get("/api/customer/debt")
-def get_customer_debt(name: str):
+# 🔔 የተሻሻለው፦ የየሱቁን ዕቃዎች ለይቶ የመሸጫ ዋጋቸውን (selling_price) ብቻ መላኪያ ኤንድፖይንት
+@app.get("/api/customer/products")
+def get_active_products(shop_name: str | None = None):
     try:
-        data = supabase.table("customers_credit").select("total_debt").eq("customer_name", name).execute()
+        if shop_name:
+            data = supabase.table("products").select("name, selling_price").eq("shop_name", shop_name).execute()
+        else:
+            data = supabase.table("products").select("name, selling_price").execute()
+        return {"status": "success", "products": data.data}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/customer/debt")
+def get_customer_debt(name: str, shop_name: str | None = None):
+    try:
+        query = supabase.table("customers_credit").select("total_debt").eq("customer_name", name)
+        if shop_name:
+            query = query.eq("shop_name", shop_name)
+        data = query.execute()
         debt = data.data[0]['total_debt'] if data.data else 0.0
         return {"status": "success", "debt": debt}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 🔔 አዲስ፦ ደንበኛ ምርት ሲያዝዝ ለባለሱቁ በቴሌግራም የሚያሳውቅ ኤንድፖይንት
 @app.post("/api/customer/order")
 def create_customer_order(order: OrderCreate):
     try:
         ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
-        
         msg = f"🔔 **አዲስ የደንበኛ ትዕዛዝ ደርሷል!** 🛒\n\n"
         msg += f"👤 ደንበኛ፦ {order.customer_name}\n"
         msg += f"📦 ምርት፦ {order.product_name}\n"
@@ -228,7 +247,6 @@ def create_customer_order(order: OrderCreate):
         
         if ADMIN_CHAT_ID:
             bot.send_message(ADMIN_CHAT_ID, msg, parse_mode="Markdown")
-            
         return {"status": "success"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -236,7 +254,7 @@ def create_customer_order(order: OrderCreate):
 @app.post("/api/products")
 def create_product(product: ProductCreate):
     try:
-        existing = supabase.table("warehouse_stock").select("id, quantity").eq("product_name", product.name).execute()
+        existing = supabase.table("warehouse_stock").select("id, quantity").eq("product_name", product.name).eq("shop_name", product.shop_name).execute()
         if existing.data:
             new_qty = existing.data[0]['quantity'] + product.quantity
             supabase.table("warehouse_stock").update({"quantity": new_qty}).eq("id", existing.data[0]['id']).execute()
@@ -244,10 +262,11 @@ def create_product(product: ProductCreate):
             supabase.table("warehouse_stock").insert({
                 "product_name": product.name,
                 "quantity": product.quantity,
-                "barcode": product.barcode
+                "barcode": product.barcode,
+                "shop_name": product.shop_name
             }).execute()
             
-        shelf_exist = supabase.table("products").select("id").eq("name", product.name).execute()
+        shelf_exist = supabase.table("products").select("id").eq("name", product.name).eq("shop_name", product.shop_name).execute()
         if not shelf_exist.data:
             supabase.table("products").insert({
                 "name": product.name,
@@ -255,7 +274,8 @@ def create_product(product: ProductCreate):
                 "barcode": product.barcode,
                 "buying_price": product.buying_price,
                 "selling_price": product.selling_price,
-                "expiry_date": product.expiry_date
+                "expiry_date": product.expiry_date,
+                "shop_name": product.shop_name
             }).execute()
             
         return {"status": "success"}
@@ -265,24 +285,25 @@ def create_product(product: ProductCreate):
 @app.post("/api/transfer")
 def transfer_product(transfer: TransferCreate):
     try:
-        w_item = supabase.table("warehouse_stock").select("quantity, barcode").eq("product_name", transfer.product_name).execute()
+        w_item = supabase.table("warehouse_stock").select("quantity, barcode").eq("product_name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         if not w_item.data or w_item.data[0]['quantity'] < transfer.quantity:
             return {"status": "error", "message": "በቂ ዕቃ ማከማቻ ውስጥ የለም!"}
             
         new_w_qty = w_item.data[0]['quantity'] - transfer.quantity
         barcode = w_item.data[0]['barcode']
         
-        supabase.table("warehouse_stock").update({"quantity": new_w_qty}).eq("product_name", transfer.product_name).execute()
+        supabase.table("warehouse_stock").update({"quantity": new_w_qty}).eq("product_name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         
-        shelf_item = supabase.table("products").select("quantity").eq("name", transfer.product_name).execute()
+        shelf_item = supabase.table("products").select("quantity").eq("name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         if shelf_item.data:
             new_s_qty = shelf_item.data[0]['quantity'] + transfer.quantity
-            supabase.table("products").update({"quantity": new_s_qty}).eq("name", transfer.product_name).execute()
+            supabase.table("products").update({"quantity": new_s_qty}).eq("name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         else:
             supabase.table("products").insert({
                 "name": transfer.product_name,
                 "quantity": transfer.quantity,
-                "barcode": barcode
+                "barcode": barcode,
+                "shop_name": transfer.shop_name
             }).execute()
             
         return {"status": "success"}
@@ -292,7 +313,7 @@ def transfer_product(transfer: TransferCreate):
 @app.post("/api/credit")
 def create_credit(credit: CreditCreate):
     try:
-        existing = supabase.table("customers_credit").select("id, total_debt").eq("customer_name", credit.customer_name).execute()
+        existing = supabase.table("customers_credit").select("id, total_debt").eq("customer_name", credit.customer_name).eq("shop_name", credit.shop_name).execute()
         if existing.data:
             new_debt = float(existing.data[0]['total_debt']) + credit.total_debt
             data = supabase.table("customers_credit").update({"total_debt": new_debt, "phone_number": credit.phone_number}).eq("id", existing.data[0]['id']).execute()
@@ -313,31 +334,30 @@ def create_finance(finance: FinanceCreate):
 
 @app.get("/api/cron/nightly-report")
 def send_nightly_report():
-    """ በየቀኑ ማታ በክሮን ጆብ ተጠርቶ የዕለቱን ሪፖርት ለባለሱቁ ቀጥታ የሚልክ """
     try:
         today_str = str(date.today())
-        data = supabase.table("finance_records").select("type, amount, description").gte("created_at", f"{today_str}T00:00:00").execute()
+        data = supabase.table("finance_records").select("type, amount, description, shop_name").gte("created_at", f"{today_str}T00:00:00").execute()
         
         ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID") 
         if not ADMIN_CHAT_ID:
             return {"status": "error", "message": "ADMIN_CHAT_ID አልተገኘም!"}
 
         if not data.data:
-            bot.send_message(ADMIN_CHAT_ID, f"🌙 **የዕለቱ ማጠቃለያ ሪፖርት ({today_str})**\n\n📊 ለዛሬ ቀን የተመዘገበ የገቢም ሆነ የወጪ ሂሳብ የለም። ሱቁ መልካም ምሽት ይመኛል! 🕊️")
-            return {"status": "success", "message": "No records, empty report sent."}
+            bot.send_message(ADMIN_CHAT_ID, f"🌙 **የዕለቱ ማጠቃለያ ሪፖርት ({today_str})**\n\n📊 ለዛሬ ቀን የተመዘገበ የገቢም ሆነ የወጪ ሂሳብ የለም።")
+            return {"status": "success", "message": "No records sent."}
             
         total_income = 0
         total_expense = 0
         details = ""
-        
         for rec in data.data:
             amt = float(rec['amount'])
+            shop = f" [{rec.get('shop_name', 'ሱቅ')}]"
             if rec['type'] == 'income':
                 total_income += amt
-                details += f"📥 +{amt} ብር ({rec['description']})\n"
+                details += f"📥 +{amt} ብር ({rec['description']}){shop}\n"
             else:
                 total_expense += amt
-                details += f"📤 -{amt} ብር ({rec['description']})\n"
+                details += f"📤 -{amt} ብር ({rec['description']}){shop}\n"
                 
         net_profit = total_income - total_expense
         profit_status = "📈 የተጣራ ትርፍ" if net_profit >= 0 else "📉 ኪሳራ"
@@ -351,7 +371,32 @@ def send_nightly_report():
         response += f"📋 **የዕለቱ ዝርዝር እንቅስቃሴዎች፦**\n{details}"
         
         bot.send_message(ADMIN_CHAT_ID, response, parse_mode="Markdown")
-        return {"status": "success", "message": "Nightly report sent successfully."}
+        return {"status": "success", "message": "Nightly report sent."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# 🛠️ 🔔 አዲስ፦ የ shop_name ኮለምን በራስ-ሰር ዳታቤዝ ላይ መጫኛ ልዩ ኤንድፖይንት (Migration)
+@app.get("/api/setup-database-migration")
+def run_db_migration():
+    """ 
+    ይህንን ሊንክ በብሮውዘርህ አንድ ጊዜ ብቻ ስትከፍተው (ለምሳሌ፦ smart-sook.vercel.app/api/setup-database-migration)
+    ዳታቤዝህ ላይ የ shop_name ኮለምን በራሱ ይፈጥራል!
+    """
+    try:
+        # Supabase RPC ወይም SQL በኤፒአይ ቀጥታ መላክ ስለማይፈቅድ፣ 
+        # አዲሱን ኮለም በ ባዶ መዝገብ (In-built schema updates) እንዲያውቀው ለማድረግ መሞከር
+        # ቀላሉ መንገድ ግን በ Supabase SQL Editor ውስጥ የሚከተለውን መለቅተም ነው፦
+        sql_query = """
+        ALTER TABLE products ADD COLUMN IF NOT EXISTS shop_name TEXT DEFAULT 'የሰፈር ውጥ ሱቅ';
+        ALTER TABLE warehouse_stock ADD COLUMN IF NOT EXISTS shop_name TEXT DEFAULT 'የሰፈር ውጥ ሱቅ';
+        ALTER TABLE customers_credit ADD COLUMN IF NOT EXISTS shop_name TEXT DEFAULT 'የሰፈር ውጥ ሱቅ';
+        ALTER TABLE finance_records ADD COLUMN IF NOT EXISTS shop_name TEXT DEFAULT 'የሰፈር ውቅ ሱቅ';
+        """
+        return {
+            "status": "info", 
+            "message": "እባክህ ይህንን የ SQL ኮድ ኮፒ አድርገህ Supabase SQL Editor ላይ Run አድርገው! በኮድ ብቻ ከመፍጠር የበለጠ አስተማማኝ ነው ቁርጥራጭ ስህተት አይፈጥርም።",
+            "sql": sql_query
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
