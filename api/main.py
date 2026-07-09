@@ -13,17 +13,15 @@ app = FastAPI(title="Smart Sook Multi-Shop Cloud API")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-# 🔐 የባለሱቁ መግቢያ ሚስጥር ቃል (በ Vercel ላይ ካልተጫነ ዲፎልት '1234' ይሆናል)
-SHOP_PASSWORD = os.getenv("SHOP_PASSWORD", "1234") 
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
-# 🔄 የባለሱቃትን ጊዜያዊ የመግቢያ ሁኔታ መከታተያ (Session Dictionary)
-# { chat_id: {"step": "awaiting_shop_name", "shop_name": "xyz"} }
-user_sessions = {}
-
 # --- 2. PYDANTIC SCHEMAS ---
+class ShopAuth(BaseModel):
+    shop_name: str
+    password: str
+
 class ProductCreate(BaseModel):
     name: str
     quantity: int
@@ -57,93 +55,59 @@ class OrderCreate(BaseModel):
     quantity: int
     note: str
 
-# --- 3. 🎯 NEW MAIN PORTAL BUTTONS (ቦቱ ሲከፈት የሚመጡ 2 በተኖች) ---
-def get_portal_menu(chat_id):
-    markup = InlineKeyboardMarkup()
-    
-    # 🏢 የባለሱቅ በተን - መጀመሪያ ወደ ጽሑፍ ሎጂክ ይመራዋል (ቀጥታ ሚኒ አፕ አይከፍትም)
-    markup.row(InlineKeyboardButton("🏢 የባለሱቅ ገጽ (Login)", callback_data="shop_login"))
-    
-    # 🛍️ የደንበኞች በተን - በቀጥታ የደንበኛ ማዘዣ ዌብ አፕ ይከፍታል
-    markup.row(InlineKeyboardButton("🛍️ የደንበኞች ገጽ (Direct Access)", web_app=telebot.types.WebAppInfo(url="https://smart-sook.vercel.app/customer")))
-    
-    return markup
-
-# 🔐 ባለሱቁ በስኬት ሲገባ ብቻ የሚከፈትለት የባለሱቅ ልዩ ሚኒ አፕ በተን
-def get_authenticated_shop_menu(shop_name):
-    markup = InlineKeyboardMarkup()
-    # የሱቁን ስም በ URL parameter አሳልፈን እንልካለን
-    url = f"https://smart-sook.vercel.app/?shop={shop_name}"
-    markup.row(InlineKeyboardButton(f"🚀 ወደ {shop_name} ማስተዳደሪያ ግባ", web_app=telebot.types.WebAppInfo(url=url)))
-    return markup
-
-# --- 4. TELEGRAM BOT HANDLERS ---
+# --- 3. TELEGRAM BOT HANDLERS ---
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    chat_id = message.chat.id
-    if chat_id in user_sessions:
-        del user_sessions[chat_id] # ሴሽኑን ማፅዳት
-        
-    bot.send_message(
-        chat_id, 
-        "እንኳን ወደ ስማርት ሱቅ ማስተዳደሪያ ቦት በሰላም መጡ! 👋\n\nእባክዎ ከታች ካሉት አማራጮች አንዱን ይምረጡ፦", 
-        reply_markup=get_portal_menu(chat_id)
-    )
-
-# 🏢 የባለሱቅ መግቢያ ሲጫን
-@bot.callback_query_handler(func=lambda call: call.data == "shop_login")
-def shop_login_start(call):
-    chat_id = call.message.chat.id
-    user_sessions[chat_id] = {"step": "awaiting_shop_name"}
-    bot.send_message(chat_id, "📝 እባክዎ የሱቅዎን ወይም የማከፋፈያዎን ስም ያስገቡ፦")
-    bot.answer_callback_query(call.id)
-
-# 📝 የባለሱቅ ስምና ፓስወርድ መቀበያ ሎጂክ
-@bot.message_handler(func=lambda message: message.chat.id in user_sessions)
-def handle_login_steps(message):
-    chat_id = message.chat.id
-    step = user_sessions[chat_id].get("step")
+    markup = InlineKeyboardMarkup()
+    # ቦቱ በቀጥታ ወደ መግቢያው (Portal) ሚኒ አፕ የሚወስድ አንድ ከለርድ በተን ብቻ ይኖረዋል
+    markup.row(InlineKeyboardButton("🚀 ስማርት ሱቅን ክፈት (Open App)", web_app=telebot.types.WebAppInfo(url="https://smart-sook.vercel.app/")))
     
-    if step == "awaiting_shop_name":
-        user_sessions[chat_id]["shop_name"] = message.text.strip()
-        user_sessions[chat_id]["step"] = "awaiting_password"
-        bot.send_message(chat_id, "🔐 አሁን ደግሞ ሚስጥር ቃሉን (Password) ያስገቡ፦")
-        
-    elif step == "awaiting_password":
-        entered_password = message.text.strip()
-        shop_name = user_sessions[chat_id]["shop_name"]
-        
-        if entered_password == SHOP_PASSWORD:
-            bot.send_message(
-                chat_id, 
-                f"✅ ማረጋገጫው ተሳክቷል! እንኳን ደህና መጡ የ {shop_name} ባለቤት።\n\nወደ ማስተዳደሪያው ለመግባት ከታች ያለውን አዝራር ይጫኑ፦", 
-                reply_markup=get_authenticated_shop_menu(shop_name)
-            )
-            # ከገባ በኋላ ሴሽኑን እናጠፋዋለን
-            del user_sessions[chat_id]
-        else:
-            bot.send_message(
-                chat_id, 
-                "❌ የተሳሳተ ሚስጥር ቃል ነው! እባክዎ እንደገና ይሞክሩ።\n/start ን ተጭነው ከእጅግ ይጀምሩ።"
-            )
-            del user_sessions[chat_id]
+    welcome_text = (
+        "እንኳን ወደ **ስማርት ሱቅ ማስተዳደሪያ** በሰላም መጡ! 🛍️✨\n\n"
+        "ይህ ቦት የሱቅዎን ሽያጭ፣ የዕቃ ክምችት፣ የዱቤ መዝገብ እና የደንበኞችን ትዕዛዝ በዘመናዊ መልኩ ለመቆጣጠር ይረዳዎታል።\n\n"
+        "ለመጀመር ከታች ያለውን ባለቀለም አዝራር ይጫኑ፦"
+    )
+    bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
 
-# --- 5. FASTAPI ROUTES ---
+# --- 4. 🔐 AUTHENTICATION ENDPOINTS (ለባለሱቅ መግቢያና መመዝገቢያ) ---
+@app.post("/api/shop/register")
+def register_shop(auth: ShopAuth):
+    try:
+        # መጀመሪያ ይህ የሱቅ ስም ቀድሞ መኖሩን ማረጋገጥ
+        existing = supabase.table("shop_accounts").select("shop_name").eq("shop_name", auth.shop_name).execute()
+        if existing.data:
+            return {"status": "error", "message": "ይህ የሱቅ ስም ቀድሞ የተመዘገበ ነው! እባክዎ ሌላ ስም ይምረጡ።"}
+        
+        # አዲስ የሱቅ አካውንት መፍጠር
+        supabase.table("shop_accounts").insert({"shop_name": auth.shop_name, "password": auth.password}).execute()
+        return {"status": "success", "message": "የሱቅ አካውንትዎ በተሳካ ሁኔታ ተፈጥሯል!"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/shop/login")
+def login_shop(auth: ShopAuth):
+    try:
+        data = supabase.table("shop_accounts").select("password").eq("shop_name", auth.shop_name).execute()
+        if not data.data:
+            return {"status": "error", "message": "የሱቅ ስሙ አልተገኘም! እባክዎ መጀመሪያ አካውንት ይፍጠሩ።"}
+        
+        if data.data[0]['password'] == auth.password:
+            return {"status": "success", "message": "በስኬት ገብተዋል!"}
+        else:
+            return {"status": "error", "message": "የተሳሳተ ሚስጥር ቃል ነው!"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# --- 5. CORE API ROUTES ---
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    try:
-        with open("api/index.html", "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return "<h3>index.html አልተገኘም</h3>"
+    with open("api/index.html", "r", encoding="utf-8") as f:
+        return f.read()
 
 @app.get("/customer", response_class=HTMLResponse)
 def read_customer_root():
-    try:
-        with open("api/customer.html", "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return "<h3>customer.html አልተገኘም</h3>"
+    with open("api/customer.html", "r", encoding="utf-8") as f:
+        return f.read()
 
 @app.get("/api/customer/products")
 def get_active_products(shop_name: str | None = None):
@@ -153,29 +117,6 @@ def get_active_products(shop_name: str | None = None):
         else:
             data = supabase.table("products").select("name, selling_price").execute()
         return {"status": "success", "products": data.data}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.get("/api/customer/debt")
-def get_customer_debt(name: str, shop_name: str | None = None):
-    try:
-        query = supabase.table("customers_credit").select("total_debt").eq("customer_name", name)
-        if shop_name:
-            query = query.eq("shop_name", shop_name)
-        data = query.execute()
-        debt = data.data[0]['total_debt'] if data.data else 0.0
-        return {"status": "success", "debt": debt}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.post("/api/customer/order")
-def create_customer_order(order: OrderCreate):
-    try:
-        ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
-        msg = f"🔔 **አዲስ የደንበኛ ትዕዛዝ ደርሷል!** 🛒\n\n👤 ደንበኛ፦ {order.customer_name}\n📦 ምርት፦ {order.product_name}\n🔢 ብዛት፦ {order.quantity}\n📝 ማስታወሻ፦ {order.note}\n"
-        if ADMIN_CHAT_ID:
-            bot.send_message(ADMIN_CHAT_ID, msg, parse_mode="Markdown")
-        return {"status": "success"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
