@@ -19,7 +19,7 @@
         <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
             <label class="block text-xs font-bold text-amber-800 uppercase tracking-wider">የሱቅዎ / የማከፋፈያዎ ስም</label>
             <input type="text" id="global_shop_name" placeholder="ለምሳሌ፦ አቤል ሸቀጣሸቀጥ" class="w-full mt-1 p-2.5 border border-amber-300 rounded-lg outline-none bg-white text-sm font-semibold text-slate-800 shadow-sm">
-            <p class="text-[11px] text-amber-600 mt-1">💡 እዚህ ላይ የሚፅፉት ስም ዕቃ ሲመዘግቡ በራስ-ሰር አብሮ ይላካል።</p>
+            <p class="text-[11px] text-amber-600 mt-1">💡 እዚህ ላይ የሚፅፉት ስም ዕቃ ሲመዘግቡ በራስ-ሰር አብሮ ይላካ.</p>
         </div>
 
         <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-bold">
@@ -42,8 +42,8 @@
                         <input type="number" id="p_qty" required class="w-full mt-1 p-2.5 border border-slate-200 rounded-lg text-sm outline-none">
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600">ባርኮድ (ካለው)</label>
-                        <input type="text" id="p_barcode" class="w-full mt-1 p-2.5 border border-slate-200 rounded-lg text-sm outline-none">
+                        <label class="block text-xs font-semibold text-slate-600">ባርኮድ (Barcode)</label>
+                        <input type="text" id="p_barcode" placeholder="ይንኩና ባርኮድ ይቃኙ" class="w-full mt-1 p-2.5 border border-slate-200 rounded-lg text-sm outline-none">
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
@@ -129,14 +129,12 @@
         // 🔄 የሱቅ ስም በስልኩ ላይ ሴቭ የማድረጊያ ሎጂክ
         const shopInput = document.getElementById('global_shop_name');
         
-        // ገጹ ሲከፈት ቀድሞ የተቀመጠ ስም ካለ አውጣው
         if(localStorage.getItem('saved_shop_name')) {
             shopInput.value = localStorage.getItem('saved_shop_name');
         } else {
-            shopInput.value = "የሰፈር ውጥ ሱቅ"; // Default
+            shopInput.value = "የሰፈር ውጥ ሱቅ";
         }
 
-        // ስሙ ሲቀየር ወዲያውኑ ሴቭ አድርግ
         shopInput.addEventListener('input', () => {
             localStorage.setItem('saved_shop_name', shopInput.value);
         });
@@ -160,6 +158,20 @@
             activeBtn.classList.add('bg-white', 'text-slate-800', 'shadow-sm');
         }
 
+        // 📷 💡 ቴሌግራም ላይ ባርኮድ ስካነር ለመክፈት የተዘጋጀ ሎጂክ
+        const barcodeInput = document.getElementById('p_barcode');
+        barcodeInput.addEventListener('click', () => {
+            if (tg.showScanQrPopup) {
+                tg.showScanQrPopup({ text: "እባክዎ የምርቱን ባርኮድ ያንብቡ" }, function(text) {
+                    barcodeInput.value = text;
+                    tg.closeScanQrPopup();
+                    return true;
+                });
+            } else {
+                console.log("ባርኮድ ስካነር የሚሰራው በቴሌግራም አፕ ውስጥ ብቻ ነው።");
+            }
+        });
+
         // SUBMIT PRODUCT
         document.getElementById('productForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -170,7 +182,7 @@
                 buying_price: parseFloat(document.getElementById('p_buying').value),
                 selling_price: parseFloat(document.getElementById('p_selling').value),
                 expiry_date: document.getElementById('p_expiry').value,
-                shop_name: getShopName() // 🏢 አዲሱ የሱቅ ስም መለያ
+                shop_name: getShopName()
             };
             await sendData('/api/products', data, "ምርቱ በተሳካ ሁኔታ ተመዝግቧል!");
             document.getElementById('productForm').reset();
@@ -182,7 +194,7 @@
             const data = {
                 product_name: document.getElementById('t_name').value,
                 quantity: parseInt(document.getElementById('t_qty').value),
-                shop_name: getShopName() // 🏢 አዲሱ የሱቅ ስም መለያ
+                shop_name: getShopName()
             };
             await sendData('/api/transfer', data, "ዕቃው ወደ መደርደሪያ ተዛውሯል!");
             document.getElementById('transferForm').reset();
@@ -195,7 +207,7 @@
                 customer_name: document.getElementById('c_name').value,
                 total_debt: parseFloat(document.getElementById('c_debt').value),
                 phone_number: document.getElementById('c_phone').value || null,
-                shop_name: getShopName() // 🏢 አዲሱ የሱቅ ስም መለያ
+                shop_name: getShopName()
             };
             await sendData('/api/credit', data, "የዱቤ ዕዳው ተመዝግቧል!");
             document.getElementById('creditForm').reset();
@@ -208,7 +220,7 @@
                 type: document.getElementById('f_type').value,
                 amount: parseFloat(document.getElementById('f_amount').value),
                 description: document.getElementById('f_desc').value,
-                shop_name: getShopName() // 🏢 አዲሱ የሱቅ ስም መለያ
+                shop_name: getShopName()
             };
             await sendData('/api/finance', data, "የሂሳብ መዝገቡ ጸድቋል!");
             document.getElementById('financeForm').reset();
