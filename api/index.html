@@ -31,7 +31,10 @@
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700">ባርኮድ (ካለ)</label>
-                        <input type="text" id="barcode" class="w-full mt-1 p-3 border border-gray-300 rounded-xl outline-none">
+                        <div class="flex gap-1 mt-1">
+                            <input type="text" id="barcode" class="w-full p-3 border border-gray-300 rounded-xl outline-none text-sm">
+                            <button type="button" onclick="scanBarcode()" class="bg-gray-800 text-white px-2 rounded-xl text-xs font-bold whitespace-nowrap">📷 ስካን</button>
+                        </div>
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
@@ -113,6 +116,15 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
+        // 📷 የቴሌግራም አብሮ የተሰራ የባርኮድ ስካነር መክፈቻ
+        function scanBarcode() {
+            tg.showScanQrPopup({ text: "እባክዎ የዕቃውን ባርኮድ ስካን ያድርጉ..." }, function(text) {
+                document.getElementById('barcode').value = text;
+                tg.closeScanQrPopup();
+                return true;
+            });
+        }
+
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
             document.getElementById(tabId).classList.remove('hidden');
@@ -158,7 +170,6 @@
             sendData('/api/credit', data, "የዱቤ መዝገቡ በተሳካ ሁኔታ ተቀምጧል!");
         });
 
-        // 4. የፋይናንስ መዝገብ መላኪያ
         document.getElementById('financeForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
@@ -166,7 +177,7 @@
                 amount: parseFloat(document.getElementById('f_amount').value),
                 description: document.getElementById('f_description').value
             };
-            sendData('/api/finance', data, "የፋይናንስ መረጃው በተሳካ ሁኔታ ተመዝግቧል!");
+            sendData('/api/finance', data, "የፋይናንስ mረጃው በተሳካ ሁኔታ ተመዝግቧል!");
         });
 
         async function sendData(url, bodyData, successMsg) {
