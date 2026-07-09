@@ -40,6 +40,14 @@ class FinanceCreate(BaseModel):
     amount: float
     description: str
 
+# 🔔 አዲስ፦ የደንበኛ ትዕዛዝ መቀበያ ስኪማ
+class OrderCreate(BaseModel):
+    customer_name: str
+    telegram_id: str
+    product_name: str
+    quantity: int
+    note: str
+
 # --- 3. KEYBOARD MENU ---
 def get_main_menu():
     markup = InlineKeyboardMarkup()
@@ -53,6 +61,8 @@ def get_main_menu():
         InlineKeyboardButton("📝 የዱቤ መዝገብ (Credit)", callback_data="check_credit")
     )
     markup.row(InlineKeyboardButton("💰 የዛሬ የቀን ሂሳብ ሪፖርት (Finance)", callback_data="check_finance"))
+    # 🔔 አዲስ፦ ለደንበኞች ብቻ የሚሆን ልዩ የትዕዛዝ ማቅረቢያ አዝራር
+    markup.row(InlineKeyboardButton("🛍️ የደንበኞች ገጽ (Order & Debt)", web_app=telebot.types.WebAppInfo(url="https://smart-sook.vercel.app/customer")))
     return markup
 
 # --- 4. TELEGRAM BOT HANDLERS ---
@@ -185,6 +195,44 @@ def read_root():
     except FileNotFoundError:
         return "<h3>index.html ፋይል በ api/ ፎልደር ውስጥ አልተገኘም!</h3>"
 
+# 🔔 አዲስ፦ የደንበኞችን የፊት ገጽ መክፈቻ መስመር
+@app.get("/customer", response_class=HTMLResponse)
+def read_customer_root():
+    try:
+        with open("api/customer.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h3>customer.html ፋይል በ api/ ፎልደር ውስጥ አልተገኘም!</h3>"
+
+# 🔔 አዲስ፦ ደንበኞች የራሳቸውን የዱቤ ዕዳ የሚፈልጉበት ኤንድፖይንት
+@app.get("/api/customer/debt")
+def get_customer_debt(name: str):
+    try:
+        data = supabase.table("customers_credit").select("total_debt").eq("customer_name", name).execute()
+        debt = data.data[0]['total_debt'] if data.data else 0.0
+        return {"status": "success", "debt": debt}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# 🔔 አዲስ፦ ደንበኛ ምርት ሲያዝዝ ለባለሱቁ በቴሌግራም የሚያሳውቅ ኤንድፖይንት
+@app.post("/api/customer/order")
+def create_customer_order(order: OrderCreate):
+    try:
+        ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+        
+        msg = f"🔔 **አዲስ የደንበኛ ትዕዛዝ ደርሷል!** 🛒\n\n"
+        msg += f"👤 ደንበኛ፦ {order.customer_name}\n"
+        msg += f"📦 ምርት፦ {order.product_name}\n"
+        msg += f"🔢 ብዛት፦ {order.quantity}\n"
+        msg += f"📝 ማስታወሻ፦ {order.note}\n"
+        
+        if ADMIN_CHAT_ID:
+            bot.send_message(ADMIN_CHAT_ID, msg, parse_mode="Markdown")
+            
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.post("/api/products")
 def create_product(product: ProductCreate):
     try:
@@ -263,25 +311,13 @@ def create_finance(finance: FinanceCreate):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@app.post("/api/webhook")
-async def telegram_webhook(request: Request):
-    try:
-        raw_json = await request.json()
-        update = Update.de_json(raw_json)
-        bot.process_new_updates([update])
-        return {"status": "ok"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 @app.get("/api/cron/nightly-report")
 def send_nightly_report():
     """ በየቀኑ ማታ በክሮን ጆብ ተጠርቶ የዕለቱን ሪፖርት ለባለሱቁ ቀጥታ የሚልክ """
     try:
         today_str = str(date.today())
-        # የዛሬ መዝገቦችን ከዳታቤዝ ማምጣት
         data = supabase.table("finance_records").select("type, amount, description").gte("created_at", f"{today_str}T00:00:00").execute()
         
-        # የባለሱቁን የቴሌግራም ቻት አይዲ እዚህ ጋር ያስገቡ (ለምሳሌ፦ ከቦቱ ያገኙትን የግሎባል አይዲ)
-        # ማሳሰቢያ፦ ይህንን ለጊዜው ወደ ራስህ አይዲ ለመላክ መጀመሪያ ቦቱን ስታርት ካደረግክበት Chat ID ጋር አገናኘው
         ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID") 
         if not ADMIN_CHAT_ID:
             return {"status": "error", "message": "ADMIN_CHAT_ID አልተገኘም!"}
@@ -314,8 +350,17 @@ def send_nightly_report():
         response += f"{profit_status}፦ **{abs(net_profit):.2f} ብር**\n\n"
         response += f"📋 **የዕለቱ ዝርዝር እንቅስቃሴዎች፦**\n{details}"
         
-        # ቀጥታ መልዕክቱን ለባለሱቁ መላክ
         bot.send_message(ADMIN_CHAT_ID, response, parse_mode="Markdown")
         return {"status": "success", "message": "Nightly report sent successfully."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/webhook")
+async def telegram_webhook(request: Request):
+    try:
+        raw_json = await request.json()
+        update = Update.de_json(raw_json)
+        bot.process_new_updates([update])
+        return {"status": "ok"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
