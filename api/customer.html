@@ -52,43 +52,50 @@
 
         const user = tg.initDataUnsafe?.user;
         const userId = user ? user.id : "123456";
-        const firstName = user ? user.first_name : "ደንበኛ";
+        // የቴሌግራም ተጠቃሚ ስም ከሌለ 'ደንበኛ' እንዲል መጠባበቂያ ተደርጓል
+        const firstName = user ? (user.first_name + (user.last_name ? ' ' + user.last_name : '')) : "ደንበኛ";
 
-        // 🔗 ከሊንኩ ላይ የሱቁን ስም (shop parameter) መፈለጊያ ሎጂክ
+        // 🔗 ከሊንኩ ላይ የሱቁን ስም መፈለጊያ ሎጂክ
         const urlParams = new URLSearchParams(window.location.search);
-        const shopName = urlParams.get('shop') || "የሰፈር ውጥ ሱቅ";
+        const shopName = urlParams.get('shop') || "የሰፈር ሱቅ";
 
         // የገጹን ርዕስ በሱቁ ስም መቀየር
         document.getElementById('shop-title').innerText = `እንኳን ወደ ${shopName.replace('_', ' ')} በሰላም መጡ! 👋`;
         document.getElementById('user-id').innerText = userId;
 
-        // የዚህን ሱቅ ምርቶች ብቻ ከነመሸጫ ዋጋቸው ከባክኤንድ ማምጣት
+        // የዚህን ሱቅ ምርቶች ማምጣት (ከባክኤንዱ የፓራሜትር ስም ጋር እንዲጣጣም ተደርጓል)
         async function fetchShopProducts() {
             try {
                 const response = await fetch(`/api/customer/products?shop_name=${encodeURIComponent(shopName)}`);
                 const result = await response.json();
                 if (result.status === "success") {
                     const selectEl = document.getElementById('order_product');
-                    selectEl.innerHTML = '<option value="">-- እባክዎ ዕቃ ይምረጡ --</option>';
                     
+                    if(result.products.length === 0) {
+                        selectEl.innerHTML = '<option value="">⚠️ በዚህ ሱቅ ውስጥ በአሁኑ ሰዓት ምንም ዕቃ የለም</option>';
+                        return;
+                    }
+
+                    selectEl.innerHTML = '<option value="">-- እባክዎ ዕቃ ይምረጡ --</option>';
                     result.products.forEach(p => {
                         const option = document.createElement('option');
-                        // ለደንበኛው የሚታየው የመሸጫ ዋጋ (selling_price) ብቻ ነው!
-                        option.value = `${p.name} (${p.selling_price} ብር)`;
+                        option.value = p.name; // ወደ ባክኤንድ ንጹህ ስሙን ብቻ ለመላክ
                         option.innerText = `${p.name} — [${p.selling_price} ብር]`;
                         selectEl.appendChild(option);
                     });
                 }
             } catch (error) {
                 console.error("ምርቶችን ለማምጣት ስህተት ተፈጥሯል፦", error);
+                document.getElementById('order_product').innerHTML = '<option value="">❌ መረጃ መጫን አልተቻለም</option>';
             }
         }
 
+        // የደንበኛውን ዕዳ ማምጣት
         async function fetchMyDebt() {
             try {
                 const response = await fetch(`/api/customer/debt?name=${encodeURIComponent(firstName)}`);
                 const result = await response.json();
-                if (result.status === "success" && result.debt !== null) {
+                if (result.status === "success" && result.debt !== undefined) {
                     document.getElementById('my-debt').innerText = `${parseFloat(result.debt).toFixed(2)} ብር`;
                 }
             } catch (error) {
@@ -96,16 +103,24 @@
             }
         }
 
-        // ገጹ ሲከፈት የሚሰሩ
+        // ገጹ ሲከፈት ስራዎችን አስጀምር
         fetchShopProducts();
         fetchMyDebt();
 
+        // ፎርሙ ሲላክ
         document.getElementById('orderForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            const productSelect = document.getElementById('order_product');
+            if (!productSelect.value) {
+                tg.showAlert("⚠️ እባክዎ መጀመሪያ ዕቃ ይምረጡ!");
+                return;
+            }
+
             const orderData = {
                 customer_name: firstName,
                 telegram_id: String(userId),
-                product_name: document.getElementById('order_product').value,
+                product_name: productSelect.value,
                 quantity: parseInt(document.getElementById('order_qty').value),
                 note: `[ሱቅ: ${shopName}] ` + document.getElementById('order_note').value
             };
@@ -116,14 +131,16 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(orderData)
                 });
-                if (response.ok) {
+                
+                const result = await response.json();
+                if (response.ok && result.status === "success") {
                     tg.showAlert("🎯 ትዕዛዝዎ በተሳካ ሁኔታ ለሱቁ ደርሷል። እናመሰግናለን!");
                     tg.close();
                 } else {
-                    tg.showAlert("❌ ትዕዛዝ ማስተላለፍ አልተቻለም።");
+                    tg.showAlert("❌ ትዕዛዝ ማስተላለፍ አልተቻለም፡ " + (result.message || "የሰርቨር ስህተት"));
                 }
             } catch (error) {
-                tg.showAlert("🚨 ስህተት ተፈጥሯል፦ " + error);
+                tg.showAlert("🚨 ግንኙነት መፍጠር አልተቻለም፦ " + error);
             }
         });
     </script>
