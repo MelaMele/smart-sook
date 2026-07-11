@@ -5,3 +5,4 @@ supabase>=2.4.0
 pyTelegramBotAPI>=4.15.0
 uvicorn[standard]>=0.28.0
 bcrypt>=4.1.0
+requests>=2.31.0
