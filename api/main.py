@@ -113,35 +113,30 @@ def login_shop(auth: ShopAuth):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# ከማንኛውም መስመር በፊት (ከላይ) ይህንን መስመር ማከልህን አረጋግጥ
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # --- 5. CORE API ROUTES ---
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     try:
+        # ከአሁኑ ፋይል አንጻር index.html በተመሳሳይ ፎልደር (api/) ውስጥ ካለ
         path = os.path.join(CURRENT_DIR, "index.html")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        return "<h3>Welcome to Smart Sook API (Index file missing)</h3>"
+        # ፋይሉ ካልተገኘ የተሟላ HTML መዋቅር እንዲመልስ እናደርጋለን (ጽሑፍ ብቻ እንዳይሆን)
+        return "<html><body><h3>Welcome to Smart Sook API (Index file missing)</h3></body></html>"
 
 @app.get("/customer", response_class=HTMLResponse)
 def read_customer_root():
     try:
+        # ከአሁኑ ፋይል አንጻር customer.html በተመሳሳይ ፎልደር (api/) ውስጥ ካለ
         path = os.path.join(CURRENT_DIR, "customer.html")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        return "<h3>Customer Portal (Customer file missing)</h3>"
-
-@app.get("/api/customer/products")
-def get_active_products(shop_name: str | None = None):
-    try:
-        query = supabase.table("products").select("name, selling_price")
-        if shop_name:
-            query = query.eq("shop_name", shop_name)
-        data = query.execute()
-        return {"status": "success", "products": data.data}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return "<html><body><h3>Customer Portal (Customer file missing)</h3></body></html>"
 
 # 💳 የደንበኛውን የዱቤ ዕዳ ከ Supabase ፈልጎ ለ HTML ገጹ ለመመለስ (የተጨመረ)
 @app.get("/api/customer/debt")
