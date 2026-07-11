@@ -21,6 +21,9 @@ if not all([SUPABASE_URL, SUPABASE_KEY, TELEGRAM_TOKEN]):
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
+# --- BASE DIRECTORY FOR STATIC FILES ---
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # --- PASSWORD HASHING UTILS ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -104,7 +107,8 @@ def login_shop(auth: ShopAuth):
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     try:
-        with open("api/index.html", "r", encoding="utf-8") as f:
+        path = os.path.join(BASE_DIR, "api", "index.html")
+        with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return "<h3>Welcome to Smart Sook API (Index file missing)</h3>"
@@ -112,7 +116,8 @@ def read_root():
 @app.get("/customer", response_class=HTMLResponse)
 def read_customer_root():
     try:
-        with open("api/customer.html", "r", encoding="utf-8") as f:
+        path = os.path.join(BASE_DIR, "api", "customer.html")
+        with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return "<h3>Customer Portal (Customer file missing)</h3>"
