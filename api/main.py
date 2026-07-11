@@ -116,22 +116,33 @@ def login_shop(auth: ShopAuth):
 # --- 5. CORE API ROUTES ---
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    try:
-        path = os.path.join(CURRENT_DIR, "index.html")
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return "<html><body><h3>Welcome to Smart Sook API (Index file missing)</h3></body></html>"
+    # በመጀመሪያ በ 'api/index.html' በኩል ይሞክራል፣ ካልሆነ በ 'index.html'
+    paths = [
+        os.path.join(os.getcwd(), "api", "index.html"),
+        os.path.join(os.getcwd(), "index.html"),
+        os.path.join(CURRENT_DIR, "index.html")
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+    
+    # ፋይሎቹ ሙሉ በሙሉ ካልተገኙ Vercel ላይ ያሉትን ፋይሎች ለማየት እንዲረዳን የተሟላ HTML ምላሽ
+    return "<html><body><h3>Smart Sook API - index.html not found at runtime.</h3></body></html>"
 
 @app.get("/customer", response_class=HTMLResponse)
 def read_customer_root():
-    try:
-        path = os.path.join(CURRENT_DIR, "customer.html")
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        return "<html><body><h3>Customer Portal (Customer file missing)</h3></body></html>"
-
+    paths = [
+        os.path.join(os.getcwd(), "api", "customer.html"),
+        os.path.join(os.getcwd(), "customer.html"),
+        os.path.join(CURRENT_DIR, "customer.html")
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+                
+    return "<html><body><h3>Smart Sook API - customer.html not found at runtime.</h3></body></html>"
 # 💳 የደንበኛውን የዱቤ ዕዳ ከ Supabase ፈልጎ ለመመለስ
 @app.get("/api/customer/debt")
 def get_customer_debt(name: str):
