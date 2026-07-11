@@ -8,8 +8,8 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
 import bcrypt
 
-# Vercel እንዲያነበው መተግበሪያውን በአንድ ቦታ ብቻ እንሰይማለን
-app = FastAPI(title="Smart Sook Multi-Shop Cloud API")
+# Vercel የራውቲንግ መዋቅሩን (Routes) በትክክል እንዲያነበው root_path="/api" ታክሏል
+app = FastAPI(title="Smart Sook Multi-Shop Cloud API", root_path="/api")
 
 # --- 1. CONFIGURATION & CLIENTS ---
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -23,7 +23,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
 # --- BASE DIRECTORY FOR STATIC FILES ---
-# Vercel ላይ በቀጥታ ከአሁኑ ፋይል አንጻር እንዲፈልግ ማድረግ አስተማማኝ ነው
+# Vercel ላይ index.html እና customer.html ፋይሎችን በትክክል እንዲያገኝ መገኛውን እንሰይማለን
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- PASSWORD HASHING UTILS ---
@@ -64,7 +64,7 @@ class FinanceCreate(BaseModel):
     description: str
     shop_name: str
 
-# 🛒 ለደንበኛ ማዘዣ አዲስ የዳታ መዋቅር (የተጨመረ)
+# 🛒 ለደንበኛ ማዘዣ የዳታ መዋቅር
 class CustomerOrder(BaseModel):
     customer_name: str
     telegram_id: str
@@ -113,32 +113,26 @@ def login_shop(auth: ShopAuth):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ከማንኛውም መስመር በፊት (ከላይ) ይህንን መስመር ማከልህን አረጋግጥ
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-
 # --- 5. CORE API ROUTES ---
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     try:
-        # ከአሁኑ ፋይል አንጻር index.html በተመሳሳይ ፎልደር (api/) ውስጥ ካለ
         path = os.path.join(CURRENT_DIR, "index.html")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        # ፋይሉ ካልተገኘ የተሟላ HTML መዋቅር እንዲመልስ እናደርጋለን (ጽሑፍ ብቻ እንዳይሆን)
         return "<html><body><h3>Welcome to Smart Sook API (Index file missing)</h3></body></html>"
 
 @app.get("/customer", response_class=HTMLResponse)
 def read_customer_root():
     try:
-        # ከአሁኑ ፋይል አንጻር customer.html በተመሳሳይ ፎልደር (api/) ውስጥ ካለ
         path = os.path.join(CURRENT_DIR, "customer.html")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
         return "<html><body><h3>Customer Portal (Customer file missing)</h3></body></html>"
 
-# 💳 የደንበኛውን የዱቤ ዕዳ ከ Supabase ፈልጎ ለ HTML ገጹ ለመመለስ (የተጨመረ)
+# 💳 የደንበኛውን የዱቤ ዕዳ ከ Supabase ፈልጎ ለመመለስ
 @app.get("/api/customer/debt")
 def get_customer_debt(name: str):
     try:
@@ -149,14 +143,10 @@ def get_customer_debt(name: str):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# 🛍️ ከደንበኛው ማዘዣ ገጽ የሚመጣውን ትዕዛዝ ተቀብሎ የሚያስተናግድ (የተጨመረ)
+# 🛍️ ከደንበኛው ማዘዣ ገጽ የሚመጣውን ትዕዛዝ ለመቀበል
 @app.post("/api/customer/order")
 def create_customer_order(order: CustomerOrder):
     try:
-        # ትዕዛዙን በ Supabase ላይ "customer_orders" በሚል ሰንጠረዥ ውስጥ መመዝገብ ትችላለህ
-        # supabase.table("customer_orders").insert(order.model_dump()).execute()
-        
-        # ለአሁኑ ትዕዛዙ በተሳካ ሁኔታ መግባቱን ብቻ መልዕክት ይመልሳል
         return {"status": "success", "message": "ትዕዛዝዎ በተሳካ ሁኔታ ደርሷል!"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
