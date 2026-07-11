@@ -1,6 +1,7 @@
-fastapi
-pydantic
-python-dotenv
-supabase
-pyTelegramBotAPI
-uvicorn
+fastapi>=0.110.0
+pydantic>=2.6.0
+python-dotenv>=1.0.1
+supabase>=2.4.0
+pyTelegramBotAPI>=4.15.0
+uvicorn[standard]>=0.28.0
+bcrypt>=4.1.0
