@@ -1,6 +1,6 @@
 import os
 from datetime import date, timedelta
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, HTTPException, status, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -136,6 +136,7 @@ def get_active_products(shop_name: str | None = None):
 @app.post("/api/products")
 def create_product(product: ProductCreate):
     try:
+        # እዚህ ጋር በ warehouse_stock ላይ buying_price እና selling_price እንዲይዝ ማድረጉ ለቀጣይ ዝውውር ይጠቅማል
         existing = supabase.table("warehouse_stock").select("id, quantity").eq("product_name", product.name).eq("shop_name", product.shop_name).execute()
         if existing.data:
             new_qty = existing.data[0]['quantity'] + product.quantity
@@ -145,7 +146,10 @@ def create_product(product: ProductCreate):
                 "product_name": product.name, 
                 "quantity": product.quantity, 
                 "barcode": product.barcode, 
-                "shop_name": product.shop_name
+                "shop_name": product.shop_name,
+                "buying_price": product.buying_price, # የተጨመረ
+                "selling_price": product.selling_price, # የተጨመረ
+                "expiry_date": product.expiry_date # የተጨመረ
             }).execute()
             
         shelf_exist = supabase.table("products").select("id").eq("name", product.name).eq("shop_name", product.shop_name).execute()
@@ -212,13 +216,14 @@ def create_finance(finance: FinanceCreate):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ከዚህ በፊት የነበረው፦ @app.post("/api/webhook")
-@app.post("/")
-async def telegram_webhook(request: Request):
+# --- 6. TELEGRAM WEBHOOK (የተስተካከለ የራውት ሊንክ) ---
+@app.post("/api/webhook")
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         raw_json = await request.json()
         update = Update.de_json(raw_json)
-        bot.process_new_updates([update])
+        # በBackground ቢያልፍ APIው ፈጣን ምላሽ እንዲሰጥ ያደርገዋል
+        background_tasks.add_task(bot.process_new_updates, [update])
         return {"status": "ok"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
