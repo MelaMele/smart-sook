@@ -1,12 +1,11 @@
 import os
 from datetime import date, timedelta
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, HTTPException, status, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
-# የይለፍ ቃል ሃሽ ለማድረግ (pip install bcrypt)
 import bcrypt
 
 app = FastAPI(title="Smart Sook Multi-Shop Cloud API")
@@ -81,7 +80,6 @@ def register_shop(auth: ShopAuth):
         if existing.data:
             return {"status": "error", "message": "ይህ የሱቅ ስም ቀድሞ የተመዘገበ ነው! እባክዎ ሌላ ስም ይምረጡ።"}
         
-        # የይለፍ ቃሉን ሃሽ አድርጎ ማስቀመጥ
         hashed_pwd = hash_password(auth.password)
         supabase.table("shop_accounts").insert({"shop_name": auth.shop_name, "password": hashed_pwd}).execute()
         return {"status": "success", "message": "የሱቅ አካውንትዎ በተሳካ ሁኔታ ተፈጥሯል!"}
@@ -95,7 +93,6 @@ def login_shop(auth: ShopAuth):
         if not data.data:
             return {"status": "error", "message": "የሱቅ ስሙ አልተገኘም! እባክዎ መጀመሪያ አካውንት ይፍጠሩ።"}
         
-        # የሃሽ ማረጋገጫ
         if verify_password(auth.password, data.data[0]['password']):
             return {"status": "success", "message": "በስኬት ገብተዋል!"}
         else:
@@ -134,20 +131,22 @@ def get_active_products(shop_name: str | None = None):
 @app.post("/api/products")
 def create_product(product: ProductCreate):
     try:
-        # ማከማቻ (Warehouse) ውስጥ መኖሩን ማረጋገጥ
         existing = supabase.table("warehouse_stock").select("id, quantity").eq("product_name", product.name).eq("shop_name", product.shop_name).execute()
         if existing.data:
             new_qty = existing.data[0]['quantity'] + product.quantity
             supabase.table("warehouse_stock").update({"quantity": new_qty}).eq("id", existing.data[0]['id']).execute()
         else:
+            # እዚህ ጋር ዋጋዎችን እና ማለፊያ ቀኑን ወደ warehouse_stock ጨምረናል
             supabase.table("warehouse_stock").insert({
                 "product_name": product.name, 
                 "quantity": product.quantity, 
                 "barcode": product.barcode, 
-                "shop_name": product.shop_name
+                "shop_name": product.shop_name,
+                "buying_price": product.buying_price,   # የተስተካከለ
+                "selling_price": product.selling_price, # የተስተካከለ
+                "expiry_date": product.expiry_date      # የተስተካከለ
             }).execute()
             
-        # መደርደሪያ (Products/Shelf) ላይ መኖሩን ማረጋገጥ
         shelf_exist = supabase.table("products").select("id").eq("name", product.name).eq("shop_name", product.shop_name).execute()
         if not shelf_exist.data:
             supabase.table("products").insert({
@@ -166,28 +165,24 @@ def create_product(product: ProductCreate):
 @app.post("/api/transfer")
 def transfer_product(transfer: TransferCreate):
     try:
-        # ማከማቻ ውስጥ ያለውን መረጃ በሙሉ (ዋጋና ማለፊያ ቀኑን ጨምሮ) ማንበብ
         w_item = supabase.table("warehouse_stock").select("*").eq("product_name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         if not w_item.data or w_item.data[0]['quantity'] < transfer.quantity:
             return {"status": "error", "message": "በቂ ዕቃ ማከማቻ ውስጥ የለም!"}
         
-        # ማከማቻውን መቀነስ
         new_w_qty = w_item.data[0]['quantity'] - transfer.quantity
         supabase.table("warehouse_stock").update({"quantity": new_w_qty}).eq("product_name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         
-        # መደርደሪያ ላይ ማደስ ወይም አዲስ መፍጠር
         shelf_item = supabase.table("products").select("quantity").eq("name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         if shelf_item.data:
             new_s_qty = shelf_item.data[0]['quantity'] + transfer.quantity
             supabase.table("products").update({"quantity": new_s_qty}).eq("name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         else:
-            # መደርደሪያው ላይ ከዚህ በፊት ከሌለ ከማከማቻው ያገኘነውን ሙሉ መረጃ እንጠቀማለን
             supabase.table("products").insert({
                 "name": transfer.product_name, 
                 "quantity": transfer.quantity, 
                 "barcode": w_item.data[0].get('barcode'), 
                 "shop_name": transfer.shop_name,
-                "buying_price": w_item.data[0].get('buying_price', 0), # በ warehouse ሰንጠረዥ ላይ ካለ
+                "buying_price": w_item.data[0].get('buying_price', 0), # አሁን በትክክል ዋጋ ያገኛል
                 "selling_price": w_item.data[0].get('selling_price', 0),
                 "expiry_date": w_item.data[0].get('expiry_date')
             }).execute()
@@ -216,12 +211,14 @@ def create_finance(finance: FinanceCreate):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# --- 6. TELEGRAM WEBHOOK (የተመቻቸ) ---
 @app.post("/api/webhook")
-async def telegram_webhook(request: Request):
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         raw_json = await request.json()
         update = Update.de_json(raw_json)
-        bot.process_new_updates([update])
+        # የቦቱን ፕሮሰስ ወደ ጀርባ በመግፋት ሰርቨሩ ወዲያው ምላሽ እንዲሰጥ ያደርጋል
+        background_tasks.add_task(bot.process_new_updates, [update])
         return {"status": "ok"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
