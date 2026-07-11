@@ -212,7 +212,8 @@ def create_finance(finance: FinanceCreate):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@app.post("/api/webhook")
+# ከዚህ በፊት የነበረው፦ @app.post("/api/webhook")
+@app.post("/")
 async def telegram_webhook(request: Request):
     try:
         raw_json = await request.json()
