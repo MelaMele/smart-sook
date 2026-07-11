@@ -1,5 +1,4 @@
 import os
-from datetime import date, timedelta
 from fastapi import FastAPI, Request, HTTPException, status, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -8,7 +7,7 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
 import bcrypt
 
-# Vercel የራውቲንግ መዋቅሩን (Routes) በትክክል እንዲያነበው root_path="/api" ታክሏል
+# Vercel የ /api/* ጥያቄዎችን ወደዚህ ሲመራው በትክክል እንዲያነበው root_path ተዘጋጅቷል
 app = FastAPI(title="Smart Sook Multi-Shop Cloud API", root_path="/api")
 
 # --- 1. CONFIGURATION & CLIENTS ---
@@ -22,8 +21,6 @@ if not all([SUPABASE_URL, SUPABASE_KEY, TELEGRAM_TOKEN]):
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
-# --- BASE DIRECTORY FOR STATIC FILES ---
-# Vercel ላይ index.html እና customer.html ፋይሎችን በትክክል እንዲያገኝ መገኛውን እንሰይማለን
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- PASSWORD HASHING UTILS ---
@@ -64,7 +61,6 @@ class FinanceCreate(BaseModel):
     description: str
     shop_name: str
 
-# 🛒 ለደንበኛ ማዘዣ የዳታ መዋቅር
 class CustomerOrder(BaseModel):
     customer_name: str
     telegram_id: str
@@ -86,37 +82,41 @@ def send_welcome(message):
     bot.send_message(message.chat.id, welcome_text, parse_mode="Markdown", reply_markup=markup)
 
 # --- 4. AUTHENTICATION ENDPOINTS ---
-@app.post("/api/shop/register")
+# ማስታወሻ፡ root_path="/api" ስለሆነ እዚህ ጋ ድጋሚ "/api" መጨመር አያስፈልግም
+@app.post("/shop/register")
 def register_shop(auth: ShopAuth):
     try:
         existing = supabase.table("shop_accounts").select("shop_name").eq("shop_name", auth.shop_name).execute()
         if existing.data:
-            return {"status": "error", "message": "ይህ የሱቅ ስም ቀድሞ የተመዘገበ ነው! እባክዎ ሌላ ስም ይምረጡ።"}
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ይህ የሱቅ ስም ቀድሞ የተመዘገበ ነው!")
         
         hashed_pwd = hash_password(auth.password)
         supabase.table("shop_accounts").insert({"shop_name": auth.shop_name, "password": hashed_pwd}).execute()
         return {"status": "success", "message": "የሱቅ አካውንትዎ በተሳካ ሁኔታ ተፈጥሯል!"}
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@app.post("/api/shop/login")
+@app.post("/shop/login")
 def login_shop(auth: ShopAuth):
     try:
         data = supabase.table("shop_accounts").select("password").eq("shop_name", auth.shop_name).execute()
         if not data.data:
-            return {"status": "error", "message": "የሱቅ ስሙ አልተገኘም! እባክዎ መጀመሪያ አካውንት ይፍጠሩ።"}
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="የሱቅ ስሙ አልተገኘም!")
         
         if verify_password(auth.password, data.data[0]['password']):
             return {"status": "success", "message": "በስኬት ገብተዋል!"}
         else:
-            return {"status": "error", "message": "የተሳሳተ ሚስጥር ቃል ነው!"}
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="የተሳሳተ ሚስጥር ቃል ነው!")
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 # --- 5. CORE API ROUTES ---
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    # በመጀመሪያ በ 'api/index.html' በኩል ይሞክራል፣ ካልሆነ በ 'index.html'
     paths = [
         os.path.join(os.getcwd(), "api", "index.html"),
         os.path.join(os.getcwd(), "index.html"),
@@ -126,8 +126,6 @@ def read_root():
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 return f.read()
-    
-    # ፋይሎቹ ሙሉ በሙሉ ካልተገኙ Vercel ላይ ያሉትን ፋይሎች ለማየት እንዲረዳን የተሟላ HTML ምላሽ
     return "<html><body><h3>Smart Sook API - index.html not found at runtime.</h3></body></html>"
 
 @app.get("/customer", response_class=HTMLResponse)
@@ -141,10 +139,9 @@ def read_customer_root():
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 return f.read()
-                
     return "<html><body><h3>Smart Sook API - customer.html not found at runtime.</h3></body></html>"
-# 💳 የደንበኛውን የዱቤ ዕዳ ከ Supabase ፈልጎ ለመመለስ
-@app.get("/api/customer/debt")
+
+@app.get("/customer/debt")
 def get_customer_debt(name: str):
     try:
         res = supabase.table("customers_credit").select("total_debt").eq("customer_name", name).execute()
@@ -152,17 +149,30 @@ def get_customer_debt(name: str):
             return {"status": "success", "debt": res.data[0]['total_debt']}
         return {"status": "success", "debt": 0.0}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-# 🛍️ ከደንበኛው ማዘዣ ገጽ የሚመጣውን ትዕዛዝ ለመቀበል
-@app.post("/api/customer/order")
-def create_customer_order(order: CustomerOrder):
+@app.post("/customer/order")
+def create_customer_order(order: CustomerOrder, background_tasks: BackgroundTasks):
     try:
+        # ትዕዛዙን ወደ Supabase ማስቀመጥ (ካስፈለገ ሰንጠረዡን መፍጠርዎን ያረጋግጡ)
+        supabase.table("customer_orders").insert(order.model_dump()).execute()
+        
+        # ለደንበኛው/ለሱቅ ባለቤቱ በቴሌግራም ቦት ማሳወቂያ መላክ
+        notification_text = (
+            f"🛍️ **አዲስ ትዕዛዝ ደርሷል!**\n\n"
+            f"👤 ደንበኛ: {order.customer_name}\n"
+            f"📦 ዕቃ: {order.product_name}\n"
+            f"🔢 ብዛት: {order.quantity}\n"
+            f"📝 ማስታወሻ: {order.note}"
+        )
+        # Background task በመጠቀም ቦቱ መልዕክት እስኪልክ APIው እንዳይዘገይ እናደርጋለን
+        background_tasks.add_task(bot.send_message, order.telegram_id, notification_text, parse_mode="Markdown")
+        
         return {"status": "success", "message": "ትዕዛዝዎ በተሳካ ሁኔታ ደርሷል!"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@app.post("/api/products")
+@app.post("/products")
 def create_product(product: ProductCreate):
     try:
         existing = supabase.table("warehouse_stock").select("id, quantity").eq("product_name", product.name).eq("shop_name", product.shop_name).execute()
@@ -193,14 +203,14 @@ def create_product(product: ProductCreate):
             }).execute()
         return {"status": "success"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@app.post("/api/transfer")
+@app.post("/transfer")
 def transfer_product(transfer: TransferCreate):
     try:
         w_item = supabase.table("warehouse_stock").select("*").eq("product_name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
         if not w_item.data or w_item.data[0]['quantity'] < transfer.quantity:
-            return {"status": "error", "message": "በቂ ዕቃ ማከማቻ ውስጥ የለም!"}
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="በቂ ዕቃ ማከማቻ ውስጥ የለም!")
         
         new_w_qty = w_item.data[0]['quantity'] - transfer.quantity
         supabase.table("warehouse_stock").update({"quantity": new_w_qty}).eq("product_name", transfer.product_name).eq("shop_name", transfer.shop_name).execute()
@@ -220,10 +230,12 @@ def transfer_product(transfer: TransferCreate):
                 "expiry_date": w_item.data[0].get('expiry_date')
             }).execute()
         return {"status": "success"}
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@app.post("/api/credit")
+@app.post("/credit")
 def create_credit(credit: CreditCreate):
     try:
         existing = supabase.table("customers_credit").select("id, total_debt").eq("customer_name", credit.customer_name).eq("shop_name", credit.shop_name).execute()
@@ -234,18 +246,18 @@ def create_credit(credit: CreditCreate):
             res = supabase.table("customers_credit").insert(credit.model_dump()).execute()
         return {"status": "success", "data": res.data if hasattr(res, 'data') else res}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
-@app.post("/api/finance")
+@app.post("/finance")
 def create_finance(finance: FinanceCreate):
     try:
         res = supabase.table("finance_records").insert(finance.model_dump()).execute()
         return {"status": "success", "data": res.data if hasattr(res, 'data') else res}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 # --- 6. TELEGRAM WEBHOOK ---
-@app.post("/api/webhook")
+@app.post("/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         raw_json = await request.json()
@@ -253,4 +265,4 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         background_tasks.add_task(bot.process_new_updates, [update])
         return {"status": "ok"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
