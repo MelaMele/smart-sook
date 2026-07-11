@@ -8,6 +8,7 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
 import bcrypt
 
+# Vercel እንዲያነበው መተግበሪያውን በአንድ ቦታ ብቻ እንሰይማለን
 app = FastAPI(title="Smart Sook Multi-Shop Cloud API")
 
 # --- 1. CONFIGURATION & CLIENTS ---
@@ -22,7 +23,8 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = telebot.TeleBot(TELEGRAM_TOKEN, threaded=False)
 
 # --- BASE DIRECTORY FOR STATIC FILES ---
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Vercel ላይ በቀጥታ ከአሁኑ ፋይል አንጻር እንዲፈልግ ማድረግ አስተማማኝ ነው
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- PASSWORD HASHING UTILS ---
 def hash_password(password: str) -> str:
@@ -61,6 +63,14 @@ class FinanceCreate(BaseModel):
     amount: float
     description: str
     shop_name: str
+
+# 🛒 ለደንበኛ ማዘዣ አዲስ የዳታ መዋቅር (የተጨመረ)
+class CustomerOrder(BaseModel):
+    customer_name: str
+    telegram_id: str
+    product_name: str
+    quantity: int
+    note: str
 
 # --- 3. TELEGRAM BOT HANDLERS ---
 @bot.message_handler(commands=['start'])
@@ -107,7 +117,7 @@ def login_shop(auth: ShopAuth):
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     try:
-        path = os.path.join(BASE_DIR, "api", "index.html")
+        path = os.path.join(CURRENT_DIR, "index.html")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
@@ -116,7 +126,7 @@ def read_root():
 @app.get("/customer", response_class=HTMLResponse)
 def read_customer_root():
     try:
-        path = os.path.join(BASE_DIR, "api", "customer.html")
+        path = os.path.join(CURRENT_DIR, "customer.html")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
@@ -133,10 +143,32 @@ def get_active_products(shop_name: str | None = None):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# 💳 የደንበኛውን የዱቤ ዕዳ ከ Supabase ፈልጎ ለ HTML ገጹ ለመመለስ (የተጨመረ)
+@app.get("/api/customer/debt")
+def get_customer_debt(name: str):
+    try:
+        res = supabase.table("customers_credit").select("total_debt").eq("customer_name", name).execute()
+        if res.data:
+            return {"status": "success", "debt": res.data[0]['total_debt']}
+        return {"status": "success", "debt": 0.0}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# 🛍️ ከደንበኛው ማዘዣ ገጽ የሚመጣውን ትዕዛዝ ተቀብሎ የሚያስተናግድ (የተጨመረ)
+@app.post("/api/customer/order")
+def create_customer_order(order: CustomerOrder):
+    try:
+        # ትዕዛዙን በ Supabase ላይ "customer_orders" በሚል ሰንጠረዥ ውስጥ መመዝገብ ትችላለህ
+        # supabase.table("customer_orders").insert(order.model_dump()).execute()
+        
+        # ለአሁኑ ትዕዛዙ በተሳካ ሁኔታ መግባቱን ብቻ መልዕክት ይመልሳል
+        return {"status": "success", "message": "ትዕዛዝዎ በተሳካ ሁኔታ ደርሷል!"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.post("/api/products")
 def create_product(product: ProductCreate):
     try:
-        # እዚህ ጋር በ warehouse_stock ላይ buying_price እና selling_price እንዲይዝ ማድረጉ ለቀጣይ ዝውውር ይጠቅማል
         existing = supabase.table("warehouse_stock").select("id, quantity").eq("product_name", product.name).eq("shop_name", product.shop_name).execute()
         if existing.data:
             new_qty = existing.data[0]['quantity'] + product.quantity
@@ -147,9 +179,9 @@ def create_product(product: ProductCreate):
                 "quantity": product.quantity, 
                 "barcode": product.barcode, 
                 "shop_name": product.shop_name,
-                "buying_price": product.buying_price, # የተጨመረ
-                "selling_price": product.selling_price, # የተጨመረ
-                "expiry_date": product.expiry_date # የተጨመረ
+                "buying_price": product.buying_price,
+                "selling_price": product.selling_price,
+                "expiry_date": product.expiry_date
             }).execute()
             
         shelf_exist = supabase.table("products").select("id").eq("name", product.name).eq("shop_name", product.shop_name).execute()
@@ -216,13 +248,12 @@ def create_finance(finance: FinanceCreate):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# --- 6. TELEGRAM WEBHOOK (የተስተካከለ የራውት ሊንክ) ---
+# --- 6. TELEGRAM WEBHOOK ---
 @app.post("/api/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     try:
         raw_json = await request.json()
         update = Update.de_json(raw_json)
-        # በBackground ቢያልፍ APIው ፈጣን ምላሽ እንዲሰጥ ያደርገዋል
         background_tasks.add_task(bot.process_new_updates, [update])
         return {"status": "ok"}
     except Exception as e:
