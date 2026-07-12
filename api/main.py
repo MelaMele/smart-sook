@@ -1,5 +1,5 @@
 import os
-import requests  # 🌐 ለቴሌግራም መልዕክት መላኪያ የተጨመረ
+import requests
 from flask import Flask, request, jsonify
 from supabase import create_client
 from datetime import datetime, timedelta, timezone
@@ -9,7 +9,6 @@ app = Flask(__name__)
 # 🔑 የEnvironment Variables ስሞች
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 
-# 🔑 የሱፓቤዝ ክላይንትን በደህንነት መንገድ መጥሪያ ዘዴ
 def get_supabase():
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
@@ -17,41 +16,32 @@ def get_supabase():
         raise ValueError("🚨 ስህተት: SUPABASE_URL ወይም SUPABASE_KEY አልተጫነም!")
     return create_client(url, key)
 
-# 📬 1. TELEGRAM WEBHOOK HANDLER (ቦቱ መልዕክት የሚቀበልበት እና ምላሽ የሚሰጥበት)
+# 📬 1. TELEGRAM WEBHOOK HANDLER
 @app.route('/api/webhook', methods=['POST'])
 def telegram_webhook():
     update = request.get_json()
-    
-    # መልዕክት መኖሩን ማረጋገጥ
     if "message" in update:
         message = update["message"]
         chat_id = message["chat"]["id"]
         text = message.get("text", "")
 
-        # 🤖 የቦቱ ትዕዛዞች ማስተናገጃ (እዚህ ጋር የፈለግከውን የቦት ሎጂክ መጨመር ትችላለህ)
         if text == "/start":
-            reply_text = "👋 እንኳን ደህና መጡ! የሽያጭ ማስተዳደሪያ ቦቱ ከVercel እና Supabase ጋር በትክክል ተገናኝቷል::\n\nእባክዎ ትዕዛዝ ያቅርቡ::"
+            reply_text = "👋 እንኳን ደህና መጡ! የሽያጭ ማስተዳደሪያ ቦቱ ከVercel እና Supabase ጋር በትክክል ተገናኝቷል::\n\nበዌብ ገፅ ላይ የሚልኩት ትዕዛዝም እዚህ ይደርሳል!"
             send_telegram_message(chat_id, reply_text)
-            
         elif text == "/status":
-            reply_text = "🟢 ሰርቨሩ እና ቦቱ በጥሩ ሁኔታ ላይ ይገኛሉ!"
+            reply_text = "🟢 ሰርቨሩ፣ ዌብሳይቱ እና ቦቱ በጥሩ ሁኔታ ላይ ይገኛሉ!"
             send_telegram_message(chat_id, reply_text)
-            
         else:
-            reply_text = f"የላኩት መልዕክት ደርሶኛል: '{text}'\nሙሉ የቦት ስራዎችን እዚህ ላይ ማስተካከል እንችላለን::"
+            reply_text = f"የላኩት መልዕክት ደርሶኛል: '{text}'\nየእርስዎ የቴሌግራም መለያ ቁጥር (Chat ID): `{chat_id}` ነው:: ይህንን ቁጥር ማዘዣ ገፁ ላይ መጠቀም ይችላሉ::"
             send_telegram_message(chat_id, reply_text)
 
     return jsonify({"status": "ok"}), 200
 
-# ✉️ የቴሌግራም መልዕክት መላኪያ ረዳት ፈንክሽን
 def send_telegram_message(chat_id, text):
     if not BOT_TOKEN:
         return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": text
-    }
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
     try:
         requests.post(url, json=payload)
     except Exception as e:
@@ -60,9 +50,57 @@ def send_telegram_message(chat_id, text):
 # 🌐 የሙከራ ገጽ
 @app.route('/')
 def home():
-    return jsonify({"status": "healthy", "message": "የሽያጭ ማስተዳደሪያ ኤፒአይ እና ቦት በተሳካ ሁኔታ እየሰሩ ነው!"})
+    return jsonify({"status": "healthy", "message": "የሽያጭ ማስተዳደሪያ ኤፒአይ፣ ቦት እና ማዘዣ ገፅ በተሳካ ሁኔታ እየሰሩ ነው!"})
 
-# 🏢 2. SHOP REGISTRATION
+# 💳 2. ዌብ ገፅ ማገናኛ - የደንበኛ እዳ መፈለጊያ (NEW)
+@app.route('/api/customer/debt', methods=['GET'])
+def check_customer_debt():
+    name = request.args.get('name')
+    if not name:
+        return jsonify({"status": "error", "message": "ስም ያስፈልጋል"}), 400
+    try:
+        supabase = get_supabase()
+        # በ credit ሰንጠረዥ ውስጥ በደንበኛ ስም መፈለግ
+        result = supabase.table('credit').select('total_debt').eq('customer_name', name).execute()
+        if result.data:
+            debt = result.data[0].get('total_debt', 0)
+            return jsonify({"status": "success", "debt": debt})
+        return jsonify({"status": "success", "debt": 0, "message": "የለብዎትም"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# 🛍️ 3. ዌብ ገፅ ማገናኛ - አዲስ ትዕዛዝ መቀበያ እና በቦት ማሳወቂያ (NEW)
+@app.route('/api/customer/order', methods=['POST'])
+def place_customer_order():
+    data = request.get_json()
+    customer_name = data.get('customer_name')
+    telegram_id = data.get('telegram_id')
+    product_name = data.get('product_name')
+    quantity = data.get('quantity')
+    note = data.get('note', '')
+
+    try:
+        supabase = get_supabase()
+        # ማስታወሻ፡ በSupabase ላይ 'orders' የሚል ሰንጠረዥ አስቀድሞ መኖሩን ያረጋግጡ
+        supabase.table('orders').insert({
+            "customer_name": customer_name,
+            "telegram_id": telegram_id,
+            "product_name": product_name,
+            "quantity": quantity,
+            "note": note,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }).execute()
+
+        # 🔥 ቦቱ በራስ-ሰር ለደንበኛው ቴሌግራም ላይ የትዕዛዝ ማረጋገጫ ይልካል!
+        if telegram_id:
+            msg = f"🛍️ *አዲስ ትዕዛዝ በተሳካ ሁኔታ ደርሶናል!*\n\n👤 *ስም:* {customer_name}\n📦 *ዕቃ:* {product_name}\n🔢 *ብዛት:* {quantity}\n📝 *ማስታወሻ:* {note}\n\nእናመሰግናለን!"
+            send_telegram_message(telegram_id, msg)
+
+        return jsonify({"status": "success", "message": "ትዕዛዝዎ ደርሷል!"})
+    except Exception as e:
+        return jsonify({"status": "error", "detail": str(e)}), 500
+
+# 🏢 4. SHOP REGISTRATION & LOGIN
 @app.route('/api/shop/register', methods=['POST'])
 def register_shop():
     data = request.get_json()
@@ -78,7 +116,6 @@ def register_shop():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# 🔑 3. SHOP LOGIN
 @app.route('/api/shop/login', methods=['POST'])
 def login_shop():
     data = request.get_json()
@@ -94,7 +131,7 @@ def login_shop():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# 📦 4. PRODUCTS (GET & POST)
+# 📦 5. PRODUCTS (GET & POST)
 @app.route('/api/products', methods=['GET', 'POST'])
 def handle_products():
     try:
@@ -118,7 +155,7 @@ def handle_products():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# 🛒 5. REGISTER SALE
+# 🛒 6. REGISTER SALE
 @app.route('/api/sales', methods=['POST'])
 def register_sale():
     data = request.get_json()
@@ -148,7 +185,7 @@ def register_sale():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# 📊 6. OWNER DASHBOARD INSIGHTS
+# 📊 7. OWNER DASHBOARD INSIGHTS
 @app.route('/api/owner/dashboard', methods=['GET'])
 def get_owner_dashboard():
     shop_name = request.args.get('shop_name')
@@ -180,7 +217,7 @@ def get_owner_dashboard():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 💰 7. FINANCE & 📝 8. CREDIT
+# 💰 8. FINANCE & CREDIT
 @app.route('/api/finance', methods=['POST'])
 def handle_finance():
     data = request.get_json()
