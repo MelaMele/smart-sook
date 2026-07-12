@@ -58,9 +58,5 @@ def send_telegram_message(chat_id, text):
     except Exception as e:
         print(f"🚨 የኔትወርክ ስህተት (መልዕክት መላክ አልተቻለም): {e}")
 
-# 🌐 የሙከራ ገጽ
-@app.route('/')
-def home():
-    return jsonify({"status": "healthy", "message": "የሽያጭ ማስተዳደሪያ ኤፒአይ እና ቦት በጥሩ ሁኔታ ላይ ናቸው!"})
 
 # --- (ሌሎቹ የShop, Products, Sales ኤፒአይ መንገዶች እዚህ ይቀጥላሉ... እንዳሉ ይቆዩ) ---
