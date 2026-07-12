@@ -14,7 +14,10 @@ def get_supabase():
         raise ValueError("🚨 ስህተት: SUPABASE_URL ወይም SUPABASE_KEY በVercel Settings ላይ አልተጫነም! እባክዎ መጀመሪያ Settings -> Environment Variables ላይ ይጫኑዋቸው::")
     
     return create_client(url, key)
-
+# 🌐 የሙከራ ገጽ (Server መስራቱን ለማወቅ)
+@app.route('/')
+def home():
+    return jsonify({"status": "healthy", "message": "የሽያጭ ማስተዳደሪያ ኤፒአይ በተሳካ ሁኔታ እየሰራ ነው!"})
 # 🏢 1. SHOP REGISTRATION (ባለቤት ብቻ)
 @app.route('/api/shop/register', methods=['POST'])
 def register_shop():
