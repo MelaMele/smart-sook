@@ -1,18 +1,19 @@
 import os
 from flask import Flask, request, jsonify
-from supabase import create_client, Client
+from supabase import create_client
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# 🔑 Supabase Credentials ከአካባቢ ተለዋዋጮች (Env Variables) መጫን
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise RuntimeError("🚨 እባክዎ SUPABASE_URL እና SUPABASE_KEY በVercel Environment Variables ላይ ይጫኑ!")
-
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# 🔑 የሱፓቤዝ ክላይንትን በደህንነት መንገድ መጥሪያ ዘዴ (Lazy Initialization)
+def get_supabase():
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    
+    if not url or not key:
+        raise ValueError("🚨 ስህተት: SUPABASE_URL ወይም SUPABASE_KEY በVercel Settings ላይ አልተጫነም! እባክዎ መጀመሪያ Settings -> Environment Variables ላይ ይጫኑዋቸው::")
+    
+    return create_client(url, key)
 
 # 🏢 1. SHOP REGISTRATION (ባለቤት ብቻ)
 @app.route('/api/shop/register', methods=['POST'])
@@ -22,6 +23,7 @@ def register_shop():
     password = data.get('password')
 
     try:
+        supabase = get_supabase()
         # ቀድሞ የተመዘገበ ተመሳሳይ ሱቅ መኖሩን ማረጋገጥ
         existing = supabase.table('shops').select('*').eq('shop_name', shop_name).execute()
         if existing.data:
@@ -42,6 +44,7 @@ def login_shop():
     role = data.get('role', 'owner') # 'owner' ወይም 'employee'
 
     try:
+        supabase = get_supabase()
         # የሱቅ ስምና ፓስወርድ ማረጋገጥ
         user = supabase.table('shops').select('*').eq('shop_name', shop_name).eq('password', password).execute()
         if not user.data:
@@ -54,9 +57,10 @@ def login_shop():
 # 📦 3. PRODUCTS (GET & POST)
 @app.route('/api/products', methods=['GET', 'POST'])
 def handle_products():
-    if request.method == 'POST':
-        data = request.get_json()
-        try:
+    try:
+        supabase = get_supabase()
+        if request.method == 'POST':
+            data = request.get_json()
             supabase.table('products').insert({
                 "shop_name": data.get('shop_name'),
                 "name": data.get('name'),
@@ -67,16 +71,12 @@ def handle_products():
                 "expiry_date": data.get('expiry_date')
             }).execute()
             return jsonify({"status": "success", "message": "ምርቱ በተሳካ ሁኔታ ተመዝግቧል!"})
-        except Exception as e:
-            return jsonify({"status": "error", "message": str(e)}), 500
-
-    else: # GET Request (ለተቀጣሪው ሊስት ማሳያ)
-        shop_name = request.args.get('shop_name')
-        try:
+        else: # GET Request
+            shop_name = request.args.get('shop_name')
             products = supabase.table('products').select('*').eq('shop_name', shop_name).gt('quantity', 0).execute()
             return jsonify(products.data)
-        except Exception as e:
-            return jsonify([]), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # 🛒 4. REGISTER SALE (የተቀጣሪ የሽያጭ መዝገብ)
 @app.route('/api/sales', methods=['POST'])
@@ -89,6 +89,7 @@ def register_sale():
     total_price = sold_qty * price_per_item
 
     try:
+        supabase = get_supabase()
         # 1. አሁን ያለውን የዕቃ ብዛት (Stock) ማረጋገጥ
         product = supabase.table('products').select('quantity').eq('id', product_id).single().execute()
         current_qty = product.data.get('quantity', 0)
@@ -124,25 +125,26 @@ def get_owner_dashboard():
     one_week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
 
     try:
+        supabase = get_supabase()
         # ሀ. የዛሬ ጠቅላላ ሽያጭ
         sales_today = supabase.table('sales').select('total_price').eq('shop_name', shop_name).gte('created_at', today_str).execute()
         today_sales_total = sum(item.get('total_price', 0) for item in sales_today.data)
 
-        # ለ. የዛሬ ጠቅላላ ወጪ (ከፋይናንስ ቴብል)
+        # ለ. የዛሬ ጠቅላላ ወጪ
         expenses_today = supabase.table('finance').select('amount').eq('shop_name', shop_name).eq('type', 'expense').gte('created_at', today_str).execute()
         today_expenses_total = sum(item.get('amount', 0) for item in expenses_today.data)
 
-        # ሐ. የምርት መቀነስ (ከ 5 በታች የሆኑ)
+        # ሐ. የምርት መቀነስ
         low_stock = supabase.table('products').select('name', 'quantity').eq('shop_name', shop_name).lt('quantity', 5).execute()
 
-        # መ. ጊዜያቸው ሊያልፍ 2 ወር የቀራቸው ዕቃዎች
+        # መ. ጊዜያቸው ሊያልፍ የቀራቸው
         near_expiry = supabase.table('products').select('name', 'expiry_date').eq('shop_name', shop_name).lte('expiry_date', two_months_later).gte('expiry_date', today_str).execute()
 
-        # ሠ. ዛሬ የተሸጡ የዕቃ ዝርዝሮች
+        # ሠ. ዛሬ የተሸጡ
         sold_details = supabase.table('sales').select('product_name', 'sold_qty', 'total_price').eq('shop_name', shop_name).gte('created_at', today_str).execute()
         formatted_sold = [{"name": s['product_name'], "sold_qty": s['sold_qty'], "total_price": s['total_price']} for s in sold_details.data]
 
-        # ረ. ለሳምንት ያልተሸጡ ዕቃዎች (Stale Stock)
+        # ረ. ያልተሸጡ ዕቃዎች
         recent_sales = supabase.table('sales').select('product_id').eq('shop_name', shop_name).gte('created_at', one_week_ago).execute()
         sold_ids = set(item['product_id'] for item in recent_sales.data)
         
@@ -155,9 +157,8 @@ def get_owner_dashboard():
             "low_stock": low_stock.data,
             "near_expiry": near_expiry.data,
             "sold_items_details": formatted_sold,
-            "stale_products": stale_products[:10] # ከፍተኛ 10ዱን ብቻ ለማሳየት
+            "stale_products": stale_products[:10]
         })
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -166,6 +167,7 @@ def get_owner_dashboard():
 def handle_finance():
     data = request.get_json()
     try:
+        supabase = get_supabase()
         supabase.table('finance').insert({
             "shop_name": data.get('shop_name'),
             "type": data.get('type'),
@@ -174,12 +176,14 @@ def handle_finance():
             "created_at": datetime.utcnow().isoformat()
         }).execute()
         return jsonify({"status": "success"})
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e: 
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/credit', methods=['POST'])
 def handle_credit():
     data = request.get_json()
     try:
+        supabase = get_supabase()
         supabase.table('credit').insert({
             "shop_name": data.get('shop_name'),
             "customer_name": data.get('customer_name'),
@@ -188,8 +192,8 @@ def handle_credit():
             "created_at": datetime.utcnow().isoformat()
         }).execute()
         return jsonify({"status": "success"})
-    except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
+    except Exception as e: 
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-# Vercel እንዲያነበው አፑን ማስነሳት
 if __name__ == '__main__':
     app.run(debug=True)
