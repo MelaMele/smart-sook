@@ -15,7 +15,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # 🏢 1. SHOP REGISTRATION (ባለቤት ብቻ)
-@app.route('/api/shop/register', models=['POST'])
+@app.route('/api/shop/register', methods=['POST'])
 def register_shop():
     data = request.get_json()
     shop_name = data.get('shop_name')
@@ -34,7 +34,7 @@ def register_shop():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # 🔑 2. SHOP LOGIN (ለባለቤትም ለተቀጣሪም)
-@app.route('/api/shop/login', models=['POST'])
+@app.route('/api/shop/login', methods=['POST'])
 def login_shop():
     data = request.get_json()
     shop_name = data.get('shop_name')
@@ -52,7 +52,7 @@ def login_shop():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # 📦 3. PRODUCTS (GET & POST)
-@app.route('/api/products', models=['GET', 'POST'])
+@app.route('/api/products', methods=['GET', 'POST'])
 def handle_products():
     if request.method == 'POST':
         data = request.get_json()
@@ -79,7 +79,7 @@ def handle_products():
             return jsonify([]), 500
 
 # 🛒 4. REGISTER SALE (የተቀጣሪ የሽያጭ መዝገብ)
-@app.route('/api/sales', models=['POST'])
+@app.route('/api/sales', methods=['POST'])
 def register_sale():
     data = request.get_json()
     product_id = data.get('product_id')
@@ -116,7 +116,7 @@ def register_sale():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # 📊 5. OWNER DASHBOARD INSIGHTS
-@app.route('/api/owner/dashboard', models=['GET'])
+@app.route('/api/owner/dashboard', methods=['GET'])
 def get_owner_dashboard():
     shop_name = request.args.get('shop_name')
     today_str = datetime.utcnow().strftime('%Y-%m-%d')
@@ -143,7 +143,6 @@ def get_owner_dashboard():
         formatted_sold = [{"name": s['product_name'], "sold_qty": s['sold_qty'], "total_price": s['total_price']} for s in sold_details.data]
 
         # ረ. ለሳምንት ያልተሸጡ ዕቃዎች (Stale Stock)
-        # በ7 ቀን ውስጥ ከተሸጡት ውጪ የሆኑትን ከምርት ማውጫ መለየት
         recent_sales = supabase.table('sales').select('product_id').eq('shop_name', shop_name).gte('created_at', one_week_ago).execute()
         sold_ids = set(item['product_id'] for item in recent_sales.data)
         
@@ -163,7 +162,7 @@ def get_owner_dashboard():
         return jsonify({"error": str(e)}), 500
 
 # 💰 6. FINANCE & 📝 7. CREDIT
-@app.route('/api/finance', models=['POST'])
+@app.route('/api/finance', methods=['POST'])
 def handle_finance():
     data = request.get_json()
     try:
@@ -177,7 +176,7 @@ def handle_finance():
         return jsonify({"status": "success"})
     except Exception as e: return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/credit', models=['POST'])
+@app.route('/api/credit', methods=['POST'])
 def handle_credit():
     data = request.get_json()
     try:
