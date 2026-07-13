@@ -105,7 +105,7 @@ def telegram_webhook():
                 
         elif text in ["/debt", "🚨 የዱቤ መዝገብ"]:
             if not OWNER_ID or str(chat_id) != str(OWNER_ID):
-                send_telegram_message(chat_id, "🔒 ይቅርታ፣ ይህንን መረጃ ለማየት ፈቃድ የለዎትም።")
+                send_telegram_message(chat_id, "🔒 ይቅርታ፣ ይህንን መረጃ ለማየት ፈቃድ የለዎት።")
             else:
                 send_telegram_message(chat_id, fetch_active_debts(), reply_markup=owner_keyboard)
                 
@@ -139,24 +139,30 @@ def place_order():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+# 🌐 3. የዌብ አፕ (HTML Web App) ገፅን ፈልጎ በቀጥታ ለቴሌግራም የሚያስረክብ መንገድ (ፍፁም አስተማማኝ አቀራረብ)
 @app.route('/')
+@app.route('/index.html')
 def home():
-    return jsonify({"status": "healthy", "service": "Smart Sook Engine"})
-# 🌐 የዌብ አፕ (HTML Web App) ገፅን ፈልጎ በቀጥታ ለቴሌግራም የሚያስረክብ መንገድ
-@app.route('/')
-@app.route('/index.html')  # 👈 ቴሌግራም በሁለቱም መንገድ ቢጠይቅ እንዳይሳሳት
-def home():
-    # ቨርሰል ላይ ፋይሉ ሊቀመጥባቸው የሚችሉትን ቦታዎች በሙሉ መፈተሽ
-    possible_paths = ['public/index.html', '../public/index.html', 'index.html', 'api/index.html']
-    
-    for path in possible_paths:
-        if os.path.exists(path):
-            try:
+    try:
+        # የ index.py ፋይል ያለበትን አቃፊ ማግኘት (ለምሳሌ፦ /api/)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # የፕሮጀክቱን ዋና ስር (Root Directory) ማግኘት
+        project_root = os.path.dirname(current_dir)
+        
+        # ፍፁም አስተማማኝ የሆኑ የፋይል መሄጃ መንገዶች (Absolute Paths)
+        paths_to_check = [
+            os.path.join(project_root, 'public', 'index.html'),
+            os.path.join(current_dir, 'public', 'index.html'),
+            os.path.join(project_root, 'index.html'),
+            os.path.join(current_dir, 'index.html')
+        ]
+        
+        for path in paths_to_check:
+            if os.path.exists(path):
                 with open(path, 'r', encoding='utf-8') as f:
                     html_content = f.read()
-                # ገፁ እንደ ተራ ፅሁፍ ሳይሆን እንደ HTML ድረ-ገፅ እንዲከፈት ይነግረዋል
                 return html_content, 200, {'Content-Type': 'text/html; charset=utf-8'}
-            except Exception as e:
-                return f"❌ ፋይሉን ለማንበብ ሲሞከር ስህተት ተፈጠረ፦ {str(e)}", 500
-                
-    return "⚠️ ስህተት፡ index.html ፋይል በፕሮጀክቱ ውስጥ አልተገኘም! እባክህ በ public ፎልደር ውስጥ መኖሩን አረጋግጥ።", 404
+        
+        return "⚠️ ስህተት፡ index.html ፋይል በፕሮጀክቱ ውስጥ አልተገኘም! እባክህ በ public ፎልደር ውስጥ መኖሩን አረጋግጥ።", 404
+    except Exception as e:
+        return f"❌ የሰርቨር ስህተት አጋጠመ፦ {str(e)}", 500
