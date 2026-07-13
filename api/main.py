@@ -142,3 +142,21 @@ def place_order():
 @app.route('/')
 def home():
     return jsonify({"status": "healthy", "service": "Smart Sook Engine"})
+# 🌐 የዌብ አፕ (HTML Web App) ገፅን ፈልጎ በቀጥታ ለቴሌግራም የሚያስረክብ መንገድ
+@app.route('/')
+@app.route('/index.html')  # 👈 ቴሌግራም በሁለቱም መንገድ ቢጠይቅ እንዳይሳሳት
+def home():
+    # ቨርሰል ላይ ፋይሉ ሊቀመጥባቸው የሚችሉትን ቦታዎች በሙሉ መፈተሽ
+    possible_paths = ['public/index.html', '../public/index.html', 'index.html', 'api/index.html']
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r', encoding='utf-8') as f:
+                    html_content = f.read()
+                # ገፁ እንደ ተራ ፅሁፍ ሳይሆን እንደ HTML ድረ-ገፅ እንዲከፈት ይነግረዋል
+                return html_content, 200, {'Content-Type': 'text/html; charset=utf-8'}
+            except Exception as e:
+                return f"❌ ፋይሉን ለማንበብ ሲሞከር ስህተት ተፈጠረ፦ {str(e)}", 500
+                
+    return "⚠️ ስህተት፡ index.html ፋይል በፕሮጀክቱ ውስጥ አልተገኘም! እባክህ በ public ፎልደር ውስጥ መኖሩን አረጋግጥ።", 404
