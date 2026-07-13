@@ -90,7 +90,7 @@ def telegram_webhook():
 
         # 🔄 ትዕዛዞችን የመለየት ሎጂክ
         if text == "/start":
-            reply_text = "👋 እንኳን ደህና መጡ! የሽያጭ ማስተዳደሪያ ቦቱ ከVercel እና Supabase ጋር በትክክል ተገናኝቷል::"
+            reply_text = "👋 እንኳን ደህና መጡ! የሽያጭ ማስተዳደሪያ ቦቱን በመጠቀም ንግድዎን ያስተዳድሩ::"
             send_telegram_message(chat_id, reply_text)
             
         elif text == "/status":
