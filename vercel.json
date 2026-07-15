@@ -1,11 +1,13 @@
 {
+  "version": 2,
+  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/api/(.*)",
       "destination": "/api/index.py"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/|.*\\.html$|.*\\.js$|.*\\.css$).*)",
       "destination": "/api/index.py"
     }
   ]
