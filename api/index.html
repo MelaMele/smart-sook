@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ስማርት ሱቅ ፖርታል</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Tailwind v3 ስሪት (በሞባይል ላይ እጅግ ፈጣን እና አስተማማኝ) -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body class="bg-slate-900 font-sans p-2 md:p-4 min-h-screen flex items-center justify-center text-slate-100">
@@ -21,7 +22,7 @@
 
             <div class="grid grid-cols-1 gap-3 pt-2">
                 <!-- 👑 Owner Button -->
-                <button onclick="showAuthForm('owner')" class="group bg-gradient-to-br from-indigo-600 to-blue-700 p-4 rounded-2xl text-left shadow-lg transform active:scale-98 transition cursor-pointer">
+                <button onclick="showAuthForm('owner')" class="group bg-gradient-to-br from-indigo-600 to-blue-700 p-4 rounded-2xl text-left shadow-lg transform active:scale-95 transition duration-150 cursor-pointer">
                     <div class="flex justify-between items-center">
                         <div>
                             <h3 class="font-bold text-sm text-white">🏢 የባለሱቅ ገጽ (Owner)</h3>
@@ -32,7 +33,7 @@
                 </button>
 
                 <!-- 🧑‍💼 Employee Button -->
-                <button onclick="showAuthForm('employee')" class="group bg-gradient-to-br from-emerald-600 to-teal-700 p-4 rounded-2xl text-left shadow-lg transform active:scale-98 transition cursor-pointer">
+                <button onclick="showAuthForm('employee')" class="group bg-gradient-to-br from-emerald-600 to-teal-700 p-4 rounded-2xl text-left shadow-lg transform active:scale-95 transition duration-150 cursor-pointer">
                     <div class="flex justify-between items-center">
                         <div>
                             <h3 class="font-bold text-sm text-white">🧑‍💼 የተቃጣሪ ገጽ (Employee)</h3>
@@ -43,7 +44,7 @@
                 </button>
 
                 <!-- 🛍️ Customer Button -->
-                <button onclick="enterAsCustomer()" class="group bg-slate-700 hover:bg-slate-650 p-4 rounded-2xl text-left shadow-md border border-slate-600 transform active:scale-98 transition cursor-pointer">
+                <button onclick="enterAsCustomer()" class="group bg-slate-700 hover:bg-slate-600 p-4 rounded-2xl text-left shadow-md border border-slate-600 transform active:scale-95 transition duration-150 cursor-pointer">
                     <div class="flex justify-between items-center">
                         <div>
                             <h3 class="font-bold text-sm text-slate-200">🛍️ የደንበኞች ገጽ (Direct)</h3>
@@ -72,9 +73,9 @@
         </div>
 
         <!-- 👑 OWNER DASHBOARD -->
-        <div id="owner-screen" class="hidden space-y-4 text-slate-800 animate-fade-in">
+        <div id="owner-screen" class="hidden space-y-4 text-slate-800">
             <div class="flex justify-between items-center">
-                <h2 id="owner-title-header" class="text-base font-bold text-slate-800">የእርስዎ ሱቅ 🏢 (ባለቤት)</h2>
+                <h2 id="owner-title-header" class="text-base font-bold text-slate-850">የእርስዎ ሱቅ 🏢 (ባለቤት)</h2>
                 <button onclick="logout()" class="text-xs font-bold text-red-500 cursor-pointer">🚪 ውጣ</button>
             </div>
 
@@ -173,9 +174,9 @@
         </div>
 
         <!-- 🧑‍💼 EMPLOYEE SCREEN (POS / SALES REGISTER) -->
-        <div id="employee-screen" class="hidden space-y-4 text-slate-800 animate-fade-in">
+        <div id="employee-screen" class="hidden space-y-4 text-slate-800">
             <div class="flex justify-between items-center">
-                <h2 id="employee-title-header" class="text-base font-bold text-slate-800">የሽያጭ ገጽ 💼 (ተቀጣሪ)</h2>
+                <h2 id="employee-title-header" class="text-base font-bold text-slate-850">የሽያጭ ገጽ 💼 (ተቀጣሪ)</h2>
                 <button onclick="logout()" class="text-xs font-bold text-red-500 cursor-pointer">🚪 ውጣ</button>
             </div>
 
@@ -249,7 +250,6 @@
             }
 
             try {
-                // ለተቀጣሪ የተለየ endpoint ወይም request ማስተካከል ይቻላል
                 const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -405,13 +405,10 @@
                 } else {
                     tg.showAlert(`❌ ሽያጩን መመዝገብ አልተቻለም።`);
                 }
-            } catch (error) { tg.showAlert(`🚨 ስ学ተት፦ ${error}`); }
+            } catch (error) { tg.showAlert(`🚨 ስህተት፦ ${error}`); }
         }
 
-        // 📷 BARCODE SCANNER (FOR REGISTRATION & SALES)
-        setupBarcodeScanner('p_barcode');
-        setupBarcodeScanner('scan-sale-btn', true);
-
+        // 📷 BARCODE SCANNER SETUP FUNCTION
         function setupBarcodeScanner(triggerId, isSaleScan = false) {
             const el = document.getElementById(triggerId);
             if (!el) return;
@@ -428,9 +425,17 @@
                         tg.closeScanQrPopup();
                         return true;
                     });
+                } else {
+                    tg.showAlert("⚠️ የባርኮድ ስካነር በዚህ የቴሌግራም ስሪት ላይ አይሰራም!");
                 }
             });
         }
+
+        // DOM ከተጫነ በኋላ ስካነሩን ማዘጋጀት
+        document.addEventListener("DOMContentLoaded", () => {
+            setupBarcodeScanner('p_barcode');
+            setupBarcodeScanner('scan-sale-btn', true);
+        });
 
         // FORMS SUBMISSION (OWNER SIDE)
         document.getElementById('productForm').addEventListener('submit', async (e) => {
