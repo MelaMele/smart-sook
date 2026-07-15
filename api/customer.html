@@ -26,6 +26,7 @@
         input:focus, textarea:focus { border-color: var(--primary); }
         button { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:hover { background: var(--primary-dark); }
+        button:disabled { background: #cbd5e1; cursor: not-allowed; }
         .btn-blue { background: var(--secondary); }
         .btn-blue:hover { background: #2563eb; }
         .result-badge { margin-top: 10px; padding: 10px; background: #e0f2fe; color: #0369a1; border-radius: 6px; font-weight: bold; text-align: center; font-size: 15px; }
@@ -45,7 +46,7 @@
             <label>የእርስዎ ሙሉ ስም</label>
             <input type="text" id="checkName" placeholder="ለምሳሌ፡ አበባው ከበደ">
         </div>
-        <button class="btn-blue" onclick="checkDebt()">እዳ ፈልግ</button>
+        <button class="btn-blue" id="btnDebt" onclick="checkDebt()">እዳ ፈልግ</button>
         <div id="debtResult" class="hidden result-badge"></div>
     </div>
 
@@ -58,7 +59,7 @@
         </div>
         <div class="form-group">
             <label>የቴሌግራም መለያ ቁጥር (Telegram ID)</label>
-            <input type="text" id="o_telegram" placeholder="የእርስዎን Telegram ID ያስገቡ">
+            <input type="number" id="o_telegram" placeholder="የእርስዎን Telegram ID (በቁጥር ብቻ)">
         </div>
         <div class="form-group">
             <label>የሚፈልጉት ዕቃ ስም</label>
@@ -72,7 +73,7 @@
             <label>ተጨማሪ ማስታወሻ (ከተፈለገ)</label>
             <textarea id="o_note" rows="2" placeholder="ለምሳሌ፡ ጥዋት 2 ሰዓት ላይ ይምጣልኝ..."></textarea>
         </div>
-        <button onclick="sendOrder()">ትዕዛዝ አስተላልፍ</button>
+        <button id="btnOrder" onclick="sendOrder()">ትዕዛዝ አስተላልፍ</button>
         <div id="orderStatus" class="status-msg"></div>
     </div>
 </div>
@@ -80,18 +81,47 @@
 <script>
     async function checkDebt() {
         const name = document.getElementById('checkName').value.trim();
+        const btn = document.getElementById('btnDebt');
+        const resultBox = document.getElementById('debtResult');
+        
         if(!name) return alert('እባክዎ ስም ያስገቡ!');
+        
+        btn.disabled = true;
+        btn.innerText = 'በመፈለግ ላይ...';
+        resultBox.classList.add('hidden');
+
         try {
             const res = await fetch(`/api/customer/debt?name=${encodeURIComponent(name)}`);
             const data = await res.json();
-            const resultBox = document.getElementById('debtResult');
+            
             resultBox.classList.remove('hidden');
-            if(data.status === 'success') { resultBox.innerText = `የአሁኑ እዳዎ፡ ${data.debt} ብር`; }
-            else { resultBox.innerText = 'መረጃውን ማግኘት አልተቻለም!'; }
-        } catch(e) { alert('ስህተት አጋጥሟል!'); }
+            if(data.status === 'success') {
+                if (data.debt > 0) {
+                    resultBox.style.background = '#fee2e2';
+                    resultBox.style.color = '#991b1b';
+                    resultBox.innerText = `የአሁኑ እዳዎ፡ ${data.debt} ብር`;
+                } else {
+                    resultBox.style.background = '#dcfce7';
+                    resultBox.style.color = '#166534';
+                    resultBox.innerText = '🎉 ምንም የዱቤ እዳ የለብዎትም!';
+                }
+            } else {
+                resultBox.style.background = '#f1f5f9';
+                resultBox.style.color = '#475569';
+                resultBox.innerText = 'መረጃው አልተገኘም! እባክዎ ስምዎን በትክክል ያስገቡ።';
+            }
+        } catch(e) { 
+            alert('ስህተት አጋጥሟል! እባክዎ በድጋሚ ይሞክሩ።'); 
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'እዳ ፈልግ';
+        }
     }
 
     async function sendOrder() {
+        const btn = document.getElementById('btnOrder');
+        const statusBox = document.getElementById('orderStatus');
+        
         const data = {
             customer_name: document.getElementById('o_customer').value.trim(),
             telegram_id: document.getElementById('o_telegram').value.trim(),
@@ -99,7 +129,14 @@
             quantity: parseInt(document.getElementById('o_qty').value),
             note: document.getElementById('o_note').value.trim()
         };
-        if(!data.customer_name || !data.telegram_id || !data.product_name) return alert('እባክዎ አስፈላጊዎቹን ይሙሉ!');
+        
+        if(!data.customer_name || !data.telegram_id || !data.product_name) {
+            return alert('እባክዎ አስፈላጊዎቹን መረጃዎች በሙሉ ይሙሉ!');
+        }
+
+        btn.disabled = true;
+        btn.innerText = 'በመላክ ላይ...';
+        statusBox.innerText = '';
 
         try {
             const res = await fetch('/api/customer/order', {
@@ -108,13 +145,24 @@
                 body: JSON.stringify(data)
             });
             const result = await res.json();
-            const statusBox = document.getElementById('orderStatus');
+            
             if(res.ok && result.status === 'success') {
-                statusBox.style.color = 'green';
+                statusBox.style.color = '#166534';
                 statusBox.innerText = '🛍️ ትዕዛዝዎ በተሳካ ሁኔታ ደርሷል!';
-                document.getElementById('o_product').value = ''; document.getElementById('o_note').value = '';
-            } else { statusBox.style.color = 'red'; statusBox.innerText = result.detail || 'ስህተት!'; }
-        } catch(e) { document.getElementById('orderStatus').innerText = 'የኔትወርክ ስህተት!'; }
+                document.getElementById('o_product').value = ''; 
+                document.getElementById('o_note').value = '';
+                document.getElementById('o_qty').value = '1';
+            } else {
+                statusBox.style.color = '#991b1b';
+                statusBox.innerText = result.detail || 'ትዕዛዙን ማስተላለፍ አልተቻለም!';
+            }
+        } catch(e) { 
+            statusBox.style.color = '#991b1b';
+            statusBox.innerText = 'የኔትወርክ ስህተት አጋጥሟል! እባክዎ ድጋሚ ይሞክሩ።'; 
+        } finally {
+            btn.disabled = false;
+            btn.innerText = 'ትዕዛዝ አስተላልፍ';
+        }
     }
 </script>
 </body>
