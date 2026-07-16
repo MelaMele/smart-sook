@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
 from supabase import create_client
 from datetime import datetime, timezone
 
@@ -24,7 +24,7 @@ def fetch_today_sales():
         supabase = get_supabase()
         today = datetime.now(timezone.utc).date().isoformat()
         
-        # አዲሱን የ 'finances' ቴብል ስም እንጠቀማለን
+        # 'finances' ቴብልን እንጠቀማለን
         res = supabase.table("finances").select("amount").eq("type", "income").gte("created_at", today).execute()
         
         sales_data = res.data
@@ -43,7 +43,7 @@ def fetch_active_debts():
     try:
         supabase = get_supabase()
         
-        # አዲሱን የ 'credits' ቴብል ስም እንጠቀማለን
+        # 'credits' ቴብልን እንጠቀማለን
         res = supabase.table("credits").select("customer_name, total_debt").gt("total_debt", 0).execute()
         
         debt_data = res.data
@@ -141,7 +141,8 @@ def get_customer_debt():
             debt_amount = float(res.data[0].get("total_debt", 0))
             return jsonify({"status": "success", "debt": debt_amount}), 200
         else:
-            return jsonify({"status": "not_found"}), 404
+            # እዳ ከሌለበት ወይም ደንበኛው ካልተገኘ 0 ብሎ ይመልስ
+            return jsonify({"status": "success", "debt": 0}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -190,24 +191,29 @@ def customer_home():
 # 📂 የ HTML ፋይሎችን በስርዓት ፈልጎ ለማቅረብ የሚረዳ የጋራ ተግባር
 def serve_html_file(filename):
     try:
+        # main.py የሚገኝበትን የ api ፎልደር path ያገኛል
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.dirname(current_dir)
         
-        paths_to_check = [
-            os.path.join(project_root, 'public', filename),
-            os.path.join(current_dir, 'public', filename),
-            os.path.join(project_root, filename),
-            os.path.join(current_dir, filename),
-            os.path.join(project_root, 'api', filename),
-            os.path.join(current_dir, 'api', filename)
-        ]
+        # HTML ፋይሎችህ ካሉበት api ፎልደር ጋር path ይሰራል
+        path = os.path.join(current_dir, filename)
         
-        for path in paths_to_check:
-            if os.path.exists(path):
-                with open(path, 'r', encoding='utf-8') as f:
-                    html_content = f.read()
-                return html_content, 200, {'Content-Type': 'text/html; charset=utf-8'}
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f:
+                html_content = f.read()
+            # render_template_string በመጠቀም Flask እንዲያቀርበው እናደርጋለን
+            return render_template_string(html_content), 200, {'Content-Type': 'text/html; charset=utf-8'}
         
-        return f"⚠️ ስህተት፦ {filename} ፋይል በፕሮጀክቱ ውስጥ አልተገኘም!", 404
+        # ⚠️ ፋይሉ በድንገት ካልተገኘ ግንኙነቱ እንዳይቋረጥ ቢያንስ ቀላል HTML እንመልስለት
+        fallback_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><meta charset="utf-8"><title>ስህተት</title></head>
+        <body style="font-family:sans-serif; text-align:center; padding:50px;">
+            <h2 style="color:red;">⚠️ ፋይሉ አልተገኘም ({filename})</h2>
+            <p>እባክዎ {filename} ፋይል በ 'api' ፎልደር ውስጥ መኖሩን ያረጋግጡ!</p>
+        </body>
+        </html>
+        """
+        return fallback_html, 404, {'Content-Type': 'text/html; charset=utf-8'}
     except Exception as e:
         return f"❌ የሰርቨር ስህተት አጋጠመ፦ {str(e)}", 500
