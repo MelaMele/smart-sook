@@ -18,13 +18,14 @@ def get_supabase():
         raise ValueError("🚨 ስህተት: SUPABASE_URL ወይም SUPABASE_KEY አልተጫነም!")
     return create_client(url, key)
 
-# 📊 የዛሬ ሽያጮችን ከSupabase (ከ finance_records ቴብል) ፈልጎ የሚያመጣ ተግባር
+# 📊 የዛሬ ሽያጮችን ከSupabase (ከ finances ቴብል) ፈልጎ የሚያመጣ ተግባር
 def fetch_today_sales():
     try:
         supabase = get_supabase()
         today = datetime.now(timezone.utc).date().isoformat()
-        # ገቢዎችን ብቻ 'income' እና የዛሬ የሆኑትን መለየት
-        res = supabase.table("finance_records").select("amount").eq("type", "income").gte("created_at", today).execute()
+        
+        # አዲሱን የ 'finances' ቴብል ስም እንጠቀማለን
+        res = supabase.table("finances").select("amount").eq("type", "income").gte("created_at", today).execute()
         
         sales_data = res.data
         if not sales_data:
@@ -37,12 +38,13 @@ def fetch_today_sales():
     except Exception as e:
         return f"❌ የሽያጭ መረጃ ከSupabase ሲነበብ ስህተት አጋጠመ፦ {str(e)}"
 
-# 🚨 ያልተከፈሉ የዱቤ እዳዎችን ከSupabase (ከ customers_credit ቴብል) ፈልጎ የሚያመጣ ተግባር
+# 🚨 ያልተከፈሉ የዱቤ እዳዎችን ከSupabase (ከ credits ቴብል) ፈልጎ የሚያመጣ ተግባር
 def fetch_active_debts():
     try:
         supabase = get_supabase()
-        # ዕዳቸው ከዜሮ በላይ የሆኑትን መፈለግ
-        res = supabase.table("customers_credit").select("customer_name, total_debt").gt("total_debt", 0).execute()
+        
+        # አዲሱን የ 'credits' ቴብል ስም እንጠቀማለን
+        res = supabase.table("credits").select("customer_name, total_debt").gt("total_debt", 0).execute()
         
         debt_data = res.data
         if not debt_data:
@@ -58,7 +60,7 @@ def fetch_active_debts():
     except Exception as e:
         return f"❌ የዱቤ መረጃ ከSupabase ሲነበብ ስህተት አጋጠመ፦ {str(e)}"
 
-# ✉️ የተሻሻለ መልዕክት መላኪያ (የቁልፍ ማውጫዎችን/Keyboard መደገፍ የሚችል)
+# ✉️ የተሻሻለ መልዕክት መላኪያ
 def send_telegram_message(chat_id, text, reply_markup=None):
     if not BOT_TOKEN:
         return
@@ -91,9 +93,8 @@ def telegram_webhook():
             "one_time_keyboard": False
         }
 
-        # 🛍️ ለደንበኞች የዌብ አፕ መክፈቻ ቁልፍ (Inline WebApp Button)
-        # ማሳሰቢያ፦ እዚህ ጋር የራስህን ትክክለኛ የ Vercel ሊንክ አስገባ
-        app_url = f"https://{request.host}/" 
+        # 🛍️ ለደንበኞች የዌብ አፕ መክፈቻ ቁልፍ (ወደ /customer ይመራል)
+        app_url = f"https://{request.host}/customer" 
         customer_keyboard = {
             "inline_keyboard": [
                 [{"text": "🚀 ስማርት ሱቅን ክፈት (Open App)", "web_app": {"url": app_url}}]
@@ -125,44 +126,62 @@ def telegram_webhook():
 
     return jsonify({"status": "ok"}), 200
 
-# 🛍️ 2. WEB APP ORDER ENDPOINT (ከHTML ገጹ ላይ ትዕዛዝ መቀበያ)
-@app.route('/api/place-order', methods=['POST'])
-def place_order():
+# 👥 2. የደንበኛ እዳ ፍለጋ ኤፒአይ (ከHTML ገጹ ላይ የሚጠራው)
+@app.route('/api/customer/debt', methods=['GET'])
+def get_customer_debt():
     try:
-        data = request.get_json() or {}
-        amount = data.get("amount")
-        customer_name = data.get("customer_name", "የዌብ አፕ ደንበኛ")
-        shop_name = data.get("shop_name", "ዋናው ሱቅ")
-        
-        if not amount:
-            return jsonify({"success": False, "error": "የገንዘብ መጠን አልተገለጸም!"}), 400
+        name = request.args.get('name', '').strip()
+        if not name:
+            return jsonify({"status": "error", "message": "ስም አልተገለጸም"}), 400
             
         supabase = get_supabase()
+        res = supabase.table("credits").select("total_debt").eq("customer_name", name).execute()
         
-        # 1. ሽያጩን በዳታቤዝ (finance_records ቴብል) መመዝገብ
-        supabase.table("finance_records").insert({
-            "type": "income",
-            "amount": float(amount),
-            "description": f"ሽያጭ በዌብ አፕ - {customer_name}",
-            "shop_name": shop_name
-        }).execute()
+        if res.data:
+            debt_amount = float(res.data[0].get("total_debt", 0))
+            return jsonify({"status": "success", "debt": debt_amount}), 200
+        else:
+            return jsonify({"status": "not_found"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# 🛍️ 3. አዲስ ትዕዛዝ መቀበያ ኤፒአይ (ከHTML ገጹ ላይ የሚጠራው)
+@app.route('/api/customer/order', methods=['POST'])
+def place_customer_order():
+    try:
+        data = request.get_json() or {}
+        customer_name = data.get("customer_name")
+        telegram_id = data.get("telegram_id")
+        product_name = data.get("product_name")
+        quantity = data.get("quantity", 1)
+        note = data.get("note", "")
         
-        # 2. ለሱቅ ባለቤቱ በቴሌግራም ወዲያውኑ ማሳወቅ
+        if not customer_name or not telegram_id or not product_name:
+            return jsonify({"status": "error", "detail": "እባክዎ ሁሉንም አስፈላጊ መረጃዎች ያስገቡ!"}), 400
+            
+        # 1. ለባለቤቱ ወዲያውኑ በቴሌግራም ማሳወቅ (Real-time Notification)
         if OWNER_ID:
-            alert_text = f"🛒 🎉 አዲስ ትዕዛዝ በዌብ አፕ ተመዝግቧል!\n\n👤 ደንበኛ፦ {customer_name}\n🏪 ሱቅ፦ {shop_name}\n💰 መጠን፦ {amount:,} ብር"
+            alert_text = (
+                f"🛒 🎉 **አዲስ ትዕዛዝ ደርሷል!**\n\n"
+                f"👤 **ደንበኛ:** {customer_name}\n"
+                f"🆔 **Telegram ID:** {telegram_id}\n"
+                f"📦 **ዕቃ:** {product_name}\n"
+                f"🔢 **ብዛት:** {quantity}\n"
+                f"📝 **ማስታወሻ:** {note if note else 'የለም'}"
+            )
             send_telegram_message(OWNER_ID, alert_text)
             
-        return jsonify({"success": True, "message": "ትዕዛዝዎ በስኬት ተመዝግቧል!"}), 200
+        return jsonify({"status": "success", "message": "ትዕዛዝዎ በስኬት ደርሷል!"}), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"status": "error", "detail": str(e)}), 500
 
-# 🌐 3. የባለሱቅ መግቢያ ገፅ (index.html) አቀራረብ
+# 🌐 4. የባለሱቅ መግቢያ ገፅ (index.html) አቀራረብ
 @app.route('/')
 @app.route('/index.html')
 def home():
     return serve_html_file('index.html')
 
-# 👥 4. የደንበኛ ገፅ (customer.html) አቀራረብ - [ይህ ቀድሞ የጎደለውና 404 ያመጣው ነው!]
+# 👥 5. የደንበኛ ገፅ (customer.html) አቀራረብ
 @app.route('/customer')
 @app.route('/customer.html')
 def customer_home():
