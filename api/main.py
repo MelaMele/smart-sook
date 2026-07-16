@@ -97,7 +97,7 @@ def telegram_webhook():
         app_url = f"https://{request.host}/customer" 
         customer_keyboard = {
             "inline_keyboard": [
-                [{"text": "🚀 ስማርት ሱቅን ክፈት (Open App)", "web_app": {"url": app_url}}]
+                [{"text": "🚀 እባክዎ ሱቅ ይክፈቱ (Open App)", "web_app": {"url": app_url}}]
             ]
         }
 
