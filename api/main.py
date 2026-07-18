@@ -77,56 +77,62 @@ def send_telegram_message(chat_id, text, reply_markup=None):
 # 📬 1. TELEGRAM WEBHOOK HANDLER
 @app.route('/api/webhook', methods=['POST'])
 def telegram_webhook():
-    update = request.get_json()
+    try:
+        update = request.get_json()
+        if not update:
+            return jsonify({"status": "error", "message": "ባዶ ዳታ ተልኳል"}), 400
 
-    if "message" in update:
-        message = update["message"]
-        chat_id = message["chat"]["id"]
-        text = message.get("text", "")
+        if "message" in update:
+            message = update["message"]
+            chat_id = message["chat"]["id"]
+            text = message.get("text", "")
 
-        # 👑 ለሱቅ ባለቤቱ የሚላክ የቁልፍ ማውጫ (Reply Keyboard)
-        owner_keyboard = {
-            "keyboard": [
-                [{"text": "📊 የዛሬ ሽያጭ"}, {"text": "🚨 የዱቤ መዝገብ"}]
-            ],
-            "resize_keyboard": True,
-            "one_time_keyboard": False
-        }
+            # 👑 ለሱቅ ባለቤቱ የሚላክ የቁልፍ ማውጫ (Reply Keyboard)
+            owner_keyboard = {
+                "keyboard": [
+                    [{"text": "📊 የዛሬ ሽያጭ"}, {"text": "🚨 የዱቤ መዝገብ"}]
+                ],
+                "resize_keyboard": True,
+                "one_time_keyboard": False
+            }
 
-        # 🛍️ ለደንበኞች የዌብ አፕ መክፈቻ ቁልፍ (ወደ /customer ይመራል)
-        app_url = f"https://{request.host}/customer" 
-        customer_keyboard = {
-            "inline_keyboard": [
-                [{"text": "🚀 እባክዎ ሱቅ ይክፈቱ (Open App)", "web_app": {"url": app_url}}]
-            ]
-        }
+            # 🛍️ ለደንበኞች የዌብ አፕ መክፈቻ ቁልፍ (ወደ /customer ይመራል)
+            app_url = f"https://{request.host}/customer" 
+            customer_keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🚀 እባክዎ ሱቅ ይክፈቱ (Open App)", "web_app": {"url": app_url}}]
+                ]
+            }
 
-        if text == "/start":
-            if OWNER_ID and str(chat_id) == str(OWNER_ID):
-                reply_text = "👋 እንኳን ደህና መጡ ባለቤት! የሽያጭ መቆጣጠሪያ ቁልፎች ከታች ተዘጋጅተውልዎታል።"
-                send_telegram_message(chat_id, reply_text, reply_markup=owner_keyboard)
-            else:
-                reply_text = "👋 እንኳን ደህና መጡ ወደ ዘመናዊ ማከፋፈያ ሱቅ ቦት! ከታች ያለውን «🚀 ስማርት ሱቅን ክፈት» ቁልፍ ተጭነው መግባት ይችላሉ።"
-                send_telegram_message(chat_id, reply_text, reply_markup=customer_keyboard)
-            
-        elif text in ["/sales", "📊 የዛሬ ሽያጭ"]:
-            if not OWNER_ID or str(chat_id) != str(OWNER_ID):
-                send_telegram_message(chat_id, "🔒 ይቅርታ፣ ይህንን መረጃ ለማየት ፈቃድ የለዎትም።")
-            else:
-                send_telegram_message(chat_id, fetch_today_sales(), reply_markup=owner_keyboard)
+            if text == "/start":
+                if OWNER_ID and str(chat_id) == str(OWNER_ID):
+                    reply_text = "👋 እንኳን ደህና መጡ ባለቤት! የሽያጭ መቆጣጠሪያ ቁልፎች ከታች ተዘጋጅተውልዎታል።"
+                    send_telegram_message(chat_id, reply_text, reply_markup=owner_keyboard)
+                else:
+                    reply_text = "👋 እንኳን ደህና መጡ ወደ ዘመናዊ ማከፋፈያ ሱቅ ቦት! ከታች ያለውን «🚀 ስማርት ሱቅን ክፈት» ቁልፍ ተጭነው መግባት ይችላሉ።"
+                    send_telegram_message(chat_id, reply_text, reply_markup=customer_keyboard)
                 
-        elif text in ["/debt", "🚨 የዱቤ መዝገብ"]:
-            if not OWNER_ID or str(chat_id) != str(OWNER_ID):
-                send_telegram_message(chat_id, "🔒 ይቅርታ፣ ይህንን መረጃ ለማየት ፈቃድ የለዎት።")
+            elif text in ["/sales", "📊 የዛሬ ሽያጭ"]:
+                if not OWNER_ID or str(chat_id) != str(OWNER_ID):
+                    send_telegram_message(chat_id, "🔒 ይቅርታ፣ ይህንን መረጃ ለማየት ፈቃድ የለዎትም።")
+                else:
+                    send_telegram_message(chat_id, fetch_today_sales(), reply_markup=owner_keyboard)
+                    
+            elif text in ["/debt", "🚨 የዱቤ መዝገብ"]:
+                if not OWNER_ID or str(chat_id) != str(OWNER_ID):
+                    send_telegram_message(chat_id, "🔒 ይቅርታ፣ ይህንን መረጃ ለማየት ፈቃድ የለዎትም።")
+                else:
+                    send_telegram_message(chat_id, fetch_active_debts(), reply_markup=owner_keyboard)
+                    
             else:
-                send_telegram_message(chat_id, fetch_active_debts(), reply_markup=owner_keyboard)
-                
-        else:
-            send_telegram_message(chat_id, f"የላኩት መልዕክት ደርሶኛል: '{text}'")
+                send_telegram_message(chat_id, f"የላኩት መልዕክት ደርሶኛል: '{text}'")
 
-    return jsonify({"status": "ok"}), 200
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        # በwebhook ላይ ስህተት ቢፈጠር እንኳ HTML ሳይሆን JSON እንዲመለስ ማድረግ
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-# 👥 2. የደንበኛ እዳ ፍለጋ ኤፒአይ (ከHTML ገጹ ላይ የሚጠራው)
+# 👥 2. የደንበኛ እዳ ፍለጋ ኤፒአይ
 @app.route('/api/customer/debt', methods=['GET'])
 def get_customer_debt():
     try:
@@ -141,12 +147,11 @@ def get_customer_debt():
             debt_amount = float(res.data[0].get("total_debt", 0))
             return jsonify({"status": "success", "debt": debt_amount}), 200
         else:
-            # እዳ ከሌለበት ወይም ደንበኛው ካልተገኘ 0 ብሎ ይመልስ
             return jsonify({"status": "success", "debt": 0}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# 🛍️ 3. አዲስ ትዕዛዝ መቀበያ ኤፒአይ (ከHTML ገጹ ላይ የሚጠራው)
+# 🛍️ 3. አዲስ ትዕዛዝ መቀበያ ኤፒአይ
 @app.route('/api/customer/order', methods=['POST'])
 def place_customer_order():
     try:
@@ -160,7 +165,6 @@ def place_customer_order():
         if not customer_name or not telegram_id or not product_name:
             return jsonify({"status": "error", "detail": "እባክዎ ሁሉንም አስፈላጊ መረጃዎች ያስገቡ!"}), 400
             
-        # 1. ለባለቤቱ ወዲያውኑ በቴሌግራም ማሳወቅ (Real-time Notification)
         if OWNER_ID:
             alert_text = (
                 f"🛒 🎉 **አዲስ ትዕዛዝ ደርሷል!**\n\n"
@@ -191,19 +195,14 @@ def customer_home():
 # 📂 የ HTML ፋይሎችን በስርዓት ፈልጎ ለማቅረብ የሚረዳ የጋራ ተግባር
 def serve_html_file(filename):
     try:
-        # main.py የሚገኝበትን የ api ፎልደር path ያገኛል
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # HTML ፋይሎችህ ካሉበት api ፎልደር ጋር path ይሰራል
         path = os.path.join(current_dir, filename)
         
         if os.path.exists(path):
             with open(path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
-            # render_template_string በመጠቀም Flask እንዲያቀርበው እናደርጋለን
             return render_template_string(html_content), 200, {'Content-Type': 'text/html; charset=utf-8'}
         
-        # ⚠️ ፋይሉ በድንገት ካልተገኘ ግንኙነቱ እንዳይቋረጥ ቢያንስ ቀላል HTML እንመልስለት
         fallback_html = f"""
         <!DOCTYPE html>
         <html>
