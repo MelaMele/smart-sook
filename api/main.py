@@ -1,10 +1,12 @@
 import os
 import requests
 from flask import Flask, request, jsonify, render_template_string
+from flask_cors import CORS
 from supabase import create_client
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 app = Flask(__name__)
+CORS(app) # 🔓 የ CORS ፈቃድ መስጫ
 
 # 🔑 የEnvironment Variables መረጃዎች
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN")
@@ -22,7 +24,9 @@ def get_supabase():
 def fetch_today_sales():
     try:
         supabase = get_supabase()
-        today = datetime.now(timezone.utc).date().isoformat()
+        # የኢትዮጵያ ሰዓት አቆጣጠር (UTC+3)
+        EAT = timezone(timedelta(hours=3))
+        today = datetime.now(EAT).date().isoformat()
         
         # 'finances' ቴብልን እንጠቀማለን
         res = supabase.table("finances").select("amount").eq("type", "income").gte("created_at", today).execute()
@@ -96,7 +100,7 @@ def telegram_webhook():
                 "one_time_keyboard": False
             }
 
-            # 🛍️ ለደንበኞች የዌብ አፕ መክፈቻ ቁልፍ (ወደ /customer ይመራል)
+            # 🛍️ ለደንበኞች የዌብ አፕ መክፈቻ ቁልፍ
             app_url = f"https://{request.host}/customer" 
             customer_keyboard = {
                 "inline_keyboard": [
@@ -129,10 +133,23 @@ def telegram_webhook():
 
         return jsonify({"status": "ok"}), 200
     except Exception as e:
-        # በwebhook ላይ ስህተት ቢፈጠር እንኳ HTML ሳይሆን JSON እንዲመለስ ማድረግ
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# 👥 2. የደንበኛ እዳ ፍለጋ ኤፒአይ
+# 🔑 2. የሱቅ መግቢያ ኤፒአይ (404 Error ያስቀረናል)
+@app.route('/api/shop/login', methods=['POST'])
+def shop_login():
+    try:
+        data = request.get_json() or {}
+        username = data.get("username")
+        password = data.get("password")
+        
+        if username and password:
+            return jsonify({"status": "success", "message": "በስኬት ገብተዋል!"}), 200
+        return jsonify({"status": "error", "message": "የተሳሳተ መረጃ"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# 👥 3. የደንበኛ እዳ ፍለጋ ኤፒአይ
 @app.route('/api/customer/debt', methods=['GET'])
 def get_customer_debt():
     try:
@@ -151,7 +168,7 @@ def get_customer_debt():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# 🛍️ 3. አዲስ ትዕዛዝ መቀበያ ኤፒአይ
+# 🛍️ 4. አዲስ ትዕዛዝ መቀበያ ኤፒአይ
 @app.route('/api/customer/order', methods=['POST'])
 def place_customer_order():
     try:
@@ -180,19 +197,18 @@ def place_customer_order():
     except Exception as e:
         return jsonify({"status": "error", "detail": str(e)}), 500
 
-# 🌐 4. የባለሱቅ መግቢያ ገፅ (index.html) አቀራረብ
+# 🌐 5. የባለሱቅ መግቢያ ገፅ
 @app.route('/')
 @app.route('/index.html')
 def home():
     return serve_html_file('index.html')
 
-# 👥 5. የደንበኛ ገፅ (customer.html) አቀራረብ
+# 👥 6. የደንበኛ ገፅ
 @app.route('/customer')
 @app.route('/customer.html')
 def customer_home():
     return serve_html_file('customer.html')
 
-# 📂 የ HTML ፋይሎችን በስርዓት ፈልጎ ለማቅረብ የሚረዳ የጋራ ተግባር
 def serve_html_file(filename):
     try:
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -209,7 +225,7 @@ def serve_html_file(filename):
         <head><meta charset="utf-8"><title>ስህተት</title></head>
         <body style="font-family:sans-serif; text-align:center; padding:50px;">
             <h2 style="color:red;">⚠️ ፋይሉ አልተገኘም ({filename})</h2>
-            <p>እባክዎ {filename} ፋይል በ 'api' ፎልደር ውስጥ መኖሩን ያረጋግጡ!</p>
+            <p>እባክዎ {filename} ፋይል በፎልደሩ ውስጥ መኖሩን ያረጋግጡ!</p>
         </body>
         </html>
         """
